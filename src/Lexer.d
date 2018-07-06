@@ -11,11 +11,12 @@ import std.utf;
 import std.conv;
 import std.array;
 import core.time;
+import std.variant;
 import utils;
 import interfaces;
 
 
-pragma(msg, "BUG: [Issue 19020] findSkip, findSplit and findSplitBefore return wrong results (prefer using findSkip later)");
+pragma(msg, "[BUG] [Issue 19020] findSkip, findSplit and findSplitBefore return wrong results (prefer using findSkip later)");
 
 
 // Lazy range: consume not more char than requested
@@ -201,6 +202,39 @@ private auto removeLineSpliting(Range)(Range input)
 
 alias StdTokenType = ILexer.TokenType;
 alias TokenLocation = ILexer.TokenLocation;
+alias IdentifierTokenValue = ILexer.IdentifierTokenValue;
+alias VoidTokenValue = ILexer.VoidTokenValue;
+alias IntegerTokenValue = ILexer.IntegerTokenValue;
+alias NumberTokenValue = ILexer.NumberTokenValue;
+alias CharTokenValue = ILexer.CharTokenValue;
+alias StringTokenValue = ILexer.StringTokenValue;
+
+struct IncludeTokenValue
+{
+    bool isGlobal;
+    string filepath;
+}
+
+struct ManyPpcTokenValue
+{
+    ILexer.TokenValue[] tokens;
+}
+
+struct PpcMsgTokenValue
+{
+    string message;
+}
+
+struct SpaceTokenValue
+{
+    bool withNewLines;
+}
+
+alias TemporaryTokenValue = Algebraic!(IdentifierTokenValue, VoidTokenValue,
+                                        IntegerTokenValue, NumberTokenValue,
+                                        CharTokenValue, StringTokenValue,
+                                        IncludeTokenValue, ManyPpcTokenValue,
+                                        PpcMsgTokenValue, SpaceTokenValue);
 
 enum PpcTokenType
 {
@@ -216,7 +250,6 @@ enum PpcTokenType
     ERROR,
     WARNING,
     PRAGMA,
-    END,
 }
 
 union TemporaryTokenType
@@ -225,12 +258,11 @@ union TemporaryTokenType
     PpcTokenType preprocessorToken;
 }
 
-pragma(msg, "TODO: add token-specific fields (variant) and (optionnaly) remove lexem ?");
 struct TemporaryToken
 {
     TemporaryTokenType type;
     TokenLocation location;
-    string lexem; // without digraph/trigraph & cesures
+    TemporaryTokenValue value;
 }
 
 // Cannot take an InputRange as input due to look-ahead parsing
@@ -245,8 +277,8 @@ private auto tokenize(Range)(Range input, IErrorHandler errorHandler)
         static private StdTokenType[string] keywords;
         static private PpcTokenType[string] directives;
 
-        pragma(msg, "TODO: support preprocessor directives with digraph '%:'");
-        pragma(msg, "TODO: support the preprocessor directive '##' and its associated digraph '%:%:'");
+        pragma(msg, "[FIXME] support preprocessor directives with digraph '%:'");
+        pragma(msg, "[FIXME] support the preprocessor directive '##' and its associated digraph '%:%:'");
         static private immutable string[] operatorLexems = [
             "(", ")", "{", "}", "[", "]", ",", ";", ":", "?", "~", "+",
             "-", "*", "/", "%", "=", "<", ">", "!", "&", "|", "^", ".",
@@ -333,11 +365,9 @@ private auto tokenize(Range)(Range input, IErrorHandler errorHandler)
             auto strDelim = _input.front;
             _input.popFront();
 
-            auto strContent = appender!string;
-
-            if(prefixed)
-                strContent.put('L');
-            strContent.put(strDelim);
+            pragma(msg, "[OPTIM] avoid allocation for each char");
+            static auto strContent = appender!(char[]);
+            strContent.clear();
 
             do
             {
@@ -351,7 +381,7 @@ private auto tokenize(Range)(Range input, IErrorHandler errorHandler)
                     auto escapeChar = lookAhead.front;
                     lookAhead.popFront();
 
-                    pragma(msg, "TODO: check the correctness of handling '\\0'");
+                    pragma(msg, "[CHECK] check the correctness of handling '\\0'");
                     if(escapeChar == strDelim)
                         strContent.put(strDelim);
                     else if(escapeChar == 'n')
@@ -366,7 +396,7 @@ private auto tokenize(Range)(Range input, IErrorHandler errorHandler)
                         strContent.put('\0');
                     else
                     {
-                        pragma(msg, "TODO: support escape codes like UTF-8, hexadecimal and octal");
+                        pragma(msg, "[OPTION] support escape codes like UTF-8, hexadecimal and octal");
                         auto tmpLoc = TokenLocation(_input.filename, _input.line, 
                                                     _input.col, _input.pos, 0);
                         _errorHandler.error("unsupported escaping code", tmpLoc.filename,
@@ -385,21 +415,31 @@ private auto tokenize(Range)(Range input, IErrorHandler errorHandler)
                                         loc.line, loc.col, length);
 
                 auto type = TemporaryTokenType(StdTokenType.EOF);
-                return TemporaryToken(type, loc, "").nullable;
+                return TemporaryToken(type, loc).nullable;
             }
 
-            // WARNING: strings must be concatenated later
-            strContent.put(strDelim);
-
-            auto type = TemporaryTokenType(strDelim == '"' ? StdTokenType.STRING : StdTokenType.CHARACTER);
             loc.length = _input.pos - loc.pos;
-            auto lexem = strContent.data;
-            return TemporaryToken(type, loc, lexem).nullable;
+
+            if(strDelim == '"')
+            {
+                auto type = TemporaryTokenType(StdTokenType.STRING);
+                auto value = TemporaryTokenValue(StringTokenValue(prefixed, strContent.data.idup));
+                return TemporaryToken(type, loc, value).nullable;
+            }
+            else
+            {
+                if(strContent.data.length != 1)
+                    _errorHandler.error("invalid character litteral (bad length)", 
+                                        loc.filename, loc.line, loc.col, loc.length);
+                auto type = TemporaryTokenType(StdTokenType.CHARACTER);
+                auto value = TemporaryTokenValue(CharTokenValue(prefixed, strContent.data.front));
+                return TemporaryToken(type, loc, value).nullable;
+            }
         }
 
         private auto tryParseIdentifier()
         {
-            pragma(msg, "TODO: implement TYPE/ENUM/(MACRO?) recognition by interacting with the parser");
+            pragma(msg, "[FIXME] implement TYPE/ENUM/(MACRO?) recognition by interacting with the parser");
 
             auto first = _input.front;
 
@@ -408,19 +448,31 @@ private auto tokenize(Range)(Range input, IErrorHandler errorHandler)
 
             auto loc = TokenLocation(_input.filename, _input.line, _input.col, _input.pos, 0);
 
-            auto tmp = appender!string;
-            _input.forwardUntil!(a => !a.isAlphaNum && a != '_')(tmp);
-            auto lexem = tmp.data;
+            static auto acc = appender!(char[]);
+            acc.clear();
+
+            _input.forwardUntil!(a => !a.isAlphaNum && a != '_')(acc);
+            auto lexem = acc.data;
             //auto lexem = refRange(&_input).until!(a => !a.isAlphaNum && a != '_').to!string;
 
-            auto type = TemporaryTokenType(lexem in keywords ? keywords[lexem] : StdTokenType.IDENTIFIER);
             loc.length = _input.pos - loc.pos;
-            return TemporaryToken(type, loc, lexem).nullable;
+            if(lexem in keywords)
+            {
+                auto type = TemporaryTokenType(keywords[lexem]);
+                return TemporaryToken(type, loc).nullable;
+            }
+            else
+            {
+                auto type = TemporaryTokenType(StdTokenType.IDENTIFIER);
+                auto value = IdentifierTokenValue(lexem.idup);
+                return TemporaryToken(type, loc, TemporaryTokenValue(value)).nullable;
+            }
         }
 
         private auto tryParseSpacing()
         {
             auto first = _input.front;
+            bool withNewLines = false;
 
             if(!first.isWhite && !(first == '/' && _input.startsWith("/*")))
                 return Nullable!TemporaryToken();
@@ -429,6 +481,7 @@ private auto tokenize(Range)(Range input, IErrorHandler errorHandler)
 
             while(true)
             {
+                pragma(msg, "[FIXME] track \\n and set withNewLines (use a template param trackNewLines if bad perfs)");
                 _input.findSkip!isWhite;
 
                 if(_input.empty || _input.front != '/' || !_input.startsWith("/*"))
@@ -451,15 +504,16 @@ private auto tokenize(Range)(Range input, IErrorHandler errorHandler)
                                                 tmpLoc.line, tmpLoc.col, length);
 
                         auto type = TemporaryTokenType(StdTokenType.EOF);
-                        return TemporaryToken(type, tmpLoc, "").nullable;
+                        return TemporaryToken(type, tmpLoc).nullable;
                     }
                 }
                 while(!_input.skipOver('/'));
             }
 
-            auto type = TemporaryTokenType(StdTokenType.SPACING);
             loc.length = _input.pos - loc.pos;
-            return TemporaryToken(type, loc, " ").nullable;
+            auto type = TemporaryTokenType(StdTokenType.SPACING);
+            auto value = SpaceTokenValue(withNewLines);
+            return TemporaryToken(type, loc, TemporaryTokenValue(value)).nullable;
         }
 
         private auto tryParseFloat()
@@ -473,23 +527,25 @@ private auto tokenize(Range)(Range input, IErrorHandler errorHandler)
 
             auto lookAhead = _input.save;
 
-            auto tmp = appender!string;
-            long lLen = lookAhead.forwardWhile!isDigit(tmp);
-            bool isFractional = lookAhead.forwardIf!(a => a == '.')(tmp);
-            long rLen = isFractional ? lookAhead.forwardWhile!isDigit(tmp) : 0;
+            static auto acc = appender!(char[]);
+            acc.clear();
+
+            long lLen = lookAhead.forwardWhile!isDigit(acc);
+            bool isFractional = lookAhead.forwardIf!(a => a == '.')(acc);
+            long rLen = isFractional ? lookAhead.forwardWhile!isDigit(acc) : 0;
 
             if(lLen+rLen == 0) // should be just a dot operator
                 return Nullable!TemporaryToken();
 
-            bool hasExponent = lookAhead.forwardIf!(a => a.among('e', 'E'))(tmp);
+            bool hasExponent = lookAhead.forwardIf!(a => a.among('e', 'E'))(acc);
 
             if(!isFractional && !hasExponent) // should be an integer
                 return Nullable!TemporaryToken();
 
             if(hasExponent)
             {
-                lookAhead.forwardIf!(a => a.among('+', '-'))(tmp);
-                long expLen = lookAhead.forwardWhile!isDigit(tmp);
+                lookAhead.forwardIf!(a => a.among('+', '-'))(acc);
+                long expLen = lookAhead.forwardWhile!isDigit(acc);
 
                 if(expLen == 0)
                 {
@@ -498,20 +554,22 @@ private auto tokenize(Range)(Range input, IErrorHandler errorHandler)
                                         lookAhead.filename, lookAhead.line, 
                                         lookAhead.col, loc.length);
                     auto type = TemporaryTokenType(StdTokenType.ERROR);
-                    return TemporaryToken(type, loc, tmp.data).nullable;
+                    return TemporaryToken(type, loc).nullable;
                 }
             }
 
-            lookAhead.forwardIf!(a => a.among('f', 'l', 'F', 'L'))(tmp);
-            auto lexem = tmp.data;
+            auto id = lookAhead.startsWithAmong!(["f", "F", "l", "L"]);
+            if(id < 0)
+                lookAhead.popFront();
 
             _input = lookAhead;
 
-            pragma(msg, "TODO: check that no identifier are glued after this token");
+            // Note: identifier-like strings found just after without spaces produces a parse error
 
-            auto type = TemporaryTokenType(StdTokenType.INTEGER);
             loc.length = _input.pos - loc.pos;
-            return TemporaryToken(type, loc, lexem).nullable;
+            auto type = TemporaryTokenType(StdTokenType.FLOAT);
+            auto value = NumberTokenValue(id >= 2, acc.data.to!double);
+            return TemporaryToken(type, loc, TemporaryTokenValue(value)).nullable;
         }
 
         private auto tryParseInteger()
@@ -526,32 +584,33 @@ private auto tokenize(Range)(Range input, IErrorHandler errorHandler)
             auto lookAhead = _input.save;
             lookAhead.popFront();
 
-            static immutable auto suffix = ["u", "l", "ul", "lu", "U", "L", "UL", "LU"];
+            static immutable auto suffix = ["u", "U", "ul", "lu", "UL", "LU", "l", "L"];
 
-            auto tmp = appender!string;
-            tmp.put(first);
+            static auto acc = appender!(char[]);
+            acc.clear();
+            acc.put(first);
+
+            int base = 10;
+
             if(first != '0') // decimal
-                lookAhead.forwardWhile!isDigit(tmp);
-            else if(lookAhead.forwardIf!(a => a.among('x', 'X'))(tmp)) // hexadecimal
-                lookAhead.forwardWhile!isHexDigit(tmp);
+                lookAhead.forwardWhile!isDigit(acc);
+            else if(lookAhead.skipOver!(a => a.among('x', 'X'))) // hexadecimal
+                lookAhead.forwardWhile!isHexDigit(acc), base = 16;
             else // octal
-                lookAhead.forwardWhile!isOctalDigit(tmp);
+                lookAhead.forwardWhile!isOctalDigit(acc), base = 8;
 
-            pragma(msg, "TODO: check that no identifier are glued after this token");
+            // Note: identifier-like strings found just after without spaces produces a parse error
 
             auto id = lookAhead.startsWithAmong!suffix;
             if(id >= 0)
-            {
-                tmp.put(suffix[id]);
                 lookAhead.popFrontExactly(suffix[id].length);
-            }
-            auto lexem = tmp.data;
 
             _input = lookAhead;
 
-            auto type = TemporaryTokenType(StdTokenType.INTEGER);
             loc.length = _input.pos - loc.pos;
-            return TemporaryToken(type, loc, lexem).nullable;
+            auto type = TemporaryTokenType(StdTokenType.INTEGER);
+            auto value = IntegerTokenValue(id >= 0 && id < 6, id >= 4, acc.data.to!long(base));
+            return TemporaryToken(type, loc, TemporaryTokenValue(value)).nullable;
         }
 
         private auto tryParseOperator()
@@ -565,15 +624,14 @@ private auto tokenize(Range)(Range input, IErrorHandler errorHandler)
 
             enum tmp = operatorLexems;
             auto id = _input.startsWithAmong!tmp;
-
             if(id < 0)
                 return Nullable!TemporaryToken();
 
-            auto lexem = operatorLexems[id];
-            auto type = operatorTokenTypes[id];
-            _input.popFrontExactly(lexem.length);
+            _input.popFrontExactly(operatorLexems[id].length);
+
             loc.length = _input.pos - loc.pos;
-            return TemporaryToken(TemporaryTokenType(type), loc, lexem).nullable;
+            auto type = operatorTokenTypes[id];
+            return TemporaryToken(TemporaryTokenType(type), loc).nullable;
         }
 
         private auto tryParseDirective()
@@ -589,13 +647,16 @@ private auto tokenize(Range)(Range input, IErrorHandler errorHandler)
             // [newline] [space]? # [space]? define [space] [ident] [space] [tokens] [newline]
             // [newline] [space]? # [space]? define [space] [ident] [space]? '(' ... ')' [space] [tokens] [newline]
             // Add an internal state for newline before preprocessing elements ?
-            pragma(msg, "TODO: reuse tryParseXXX functions to parse preprocessing directives (children tokens)");
+            pragma(msg, "[NOTE] reuse tryParseXXX functions to parse preprocessing directives (children tokens)");
 
-            pragma(msg, "TODO: support comment in preprocessing directives");
-            pragma(msg, "TODO: check \\n at the end of the directive + add check at the end of file");
-            auto tmp = appender!(string);
-            _input.forwardUntil!(a => a == '\n')(tmp);
-            auto lexem = tmp.data;
+            pragma(msg, "[FIXME] support comment in preprocessing directives");
+            pragma(msg, "[CHECK] check \\n at the end of the directive + add check at the end of file");
+
+            static auto acc = appender!(char[]);
+            acc.clear();
+
+            _input.forwardUntil!(a => a == '\n')(acc);
+            auto lexem = acc.data;
             _input.popFrontN(1);
 
             loc.length = _input.pos - loc.pos;
@@ -606,12 +667,13 @@ private auto tokenize(Range)(Range input, IErrorHandler errorHandler)
             {
                 _errorHandler.error("unknown directive", _input.filename, _input.line, _input.col);
                 auto type = TemporaryTokenType(StdTokenType.ERROR);
-                return TemporaryToken(type, loc, lexem).nullable;
+                return TemporaryToken(type, loc).nullable;
             }
 
             TemporaryTokenType type;
             type.preprocessorToken = directives[directive];
-            return TemporaryToken(type, loc, lexem).nullable;
+            pragma(msg, "[FIXME] add a value !");
+            return TemporaryToken(type, loc).nullable;
         }
 
         private void computeNext()
@@ -626,11 +688,11 @@ private auto tokenize(Range)(Range input, IErrorHandler errorHandler)
             else if(!(result = tryParseOperator()).isNull) {}
             else if(!(result = tryParseDirective()).isNull) {}
             else
-            {
+            { 
                 _errorHandler.error("unknown token", _input.filename, _input.line, _input.col);
                 auto type = TemporaryTokenType(StdTokenType.ERROR);
                 auto location = TokenLocation(_input.filename, _input.line, _input.col, _input.pos, 1);
-                result = TemporaryToken(type, location, _input.front.to!string).nullable;
+                result = TemporaryToken(type, location).nullable;
                 _input.popFront();
             }
         }
@@ -661,10 +723,11 @@ private auto tokenize(Range)(Range input, IErrorHandler errorHandler)
 }
 
 
-pragma(msg, "TODO: check support of UTF-8 (code & filenames)");
-pragma(msg, "TODO: support includes (recursively)");
-pragma(msg, "TODO: support macro/defines definition/replacement (recursively) & expressions in #ifXXX");
-pragma(msg, "TODO: support merging strings");
+pragma(msg, "[NOTE] integers and numbers size are bounded by compiler");
+pragma(msg, "[CHECK] check support of UTF-8 (code & filenames)");
+pragma(msg, "[FIXME] support includes (recursively)");
+pragma(msg, "[FIXME] support macro/defines definition/replacement (recursively) & expressions in #ifXXX");
+pragma(msg, "[FIXME] support merging strings");
 private class Lexer : ILexer, IGo
 {
     private

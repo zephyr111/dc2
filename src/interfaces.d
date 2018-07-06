@@ -1,4 +1,5 @@
 import std.exception;
+import std.variant;
 
 
 interface ILexer
@@ -54,13 +55,46 @@ interface ILexer
         EOF,
     }
 
-    // Notes:
-    //  - the length of the token include 
+    alias VoidTokenValue = void;
+    struct IdentifierTokenValue
+    {
+        string name;
+    }
+
+    struct IntegerTokenValue
+    {
+        bool isUnsigned;
+        bool isLong;
+        long content;
+    }
+
+    struct NumberTokenValue
+    {
+        bool isDouble;
+        double content;
+    }
+
+    struct CharTokenValue
+    {
+        bool isWide;
+        dchar content;
+    }
+
+    struct StringTokenValue
+    {
+        bool isWide;
+        string content;
+    }
+
+    alias TokenValue = Algebraic!(IdentifierTokenValue, VoidTokenValue,
+                                    IntegerTokenValue, NumberTokenValue,
+                                    CharTokenValue, StringTokenValue);
+
     struct Token
     {
         TokenType type;
         TokenLocation location;
-        string lexem; // without digraph/trigraph & cesures
+        TokenValue lexem;
     }
 
     // Location in the source file (include digraph/trigraph and cesures)
