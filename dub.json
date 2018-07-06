@@ -1,0 +1,9 @@
+{
+	"name": "compiler",
+	"authors": [
+		"Jérôme Richard"
+	],
+	"description": "A minimalist C compiler",
+	"copyright": "Copyright © 2018, Jérôme Richard",
+	"license": "MPL"
+}
