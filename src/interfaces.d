@@ -46,7 +46,7 @@ interface ILexer
         AND_ASSIGN, OR_ASSIGN, XOR_ASSIGN,
 
         // Ignored tokens (spacing include comments in C)
-        SPACING,
+        //SPACING,
 
         // An invalid token (unknown)
         ERROR,
@@ -55,7 +55,6 @@ interface ILexer
         EOF,
     }
 
-    alias VoidTokenValue = void;
     struct IdentifierTokenValue
     {
         string name;
@@ -86,7 +85,7 @@ interface ILexer
         string content;
     }
 
-    alias TokenValue = Algebraic!(IdentifierTokenValue, VoidTokenValue,
+    alias TokenValue = Algebraic!(IdentifierTokenValue, void,
                                     IntegerTokenValue, NumberTokenValue,
                                     CharTokenValue, StringTokenValue);
 
@@ -127,8 +126,9 @@ class HaltException : Exception
 
 interface IErrorHandler
 {
-    // Note: error and missingFile functions can throw a class 
+    // Note: error and missingFile functions can throw a class
     // derived from IHaltException to stop the program
+    void warning(string message, string filename, ulong line, ulong col, ulong sliceLength = 0);
     void error(string message, string filename, ulong line, ulong col, ulong sliceLength = 0);
     void missingFile(string filename);
     void handleHalt(HaltException err);

@@ -16,6 +16,11 @@ class ErrorHandler : IErrorHandler
         _filename = filename;
     }
 
+    override void warning(string message, string filename, ulong line, ulong col, ulong sliceLength = 0)
+    {
+        stderr.writefln("%s:%d:%d: warning: %s", filename, line, col, message);
+    }
+
     override void error(string message, string filename, ulong line, ulong col, ulong sliceLength = 0)
     {
         stderr.writefln("%s:%d:%d: error: %s", filename, line, col, message);
