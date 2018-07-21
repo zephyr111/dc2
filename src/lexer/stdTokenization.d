@@ -86,7 +86,7 @@ auto stdTokenize(Range)(Range input, IErrorHandler errorHandler)
             }
 
             auto id = lookAhead.startsWithAmong!(["f", "F", "l", "L"]);
-            if(id < 0)
+            if(id >= 0)
                 lookAhead.popFront();
 
             input = lookAhead;
