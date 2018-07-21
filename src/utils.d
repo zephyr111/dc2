@@ -125,7 +125,7 @@ bool forwardIf(alias pred, alias func, R1)(ref R1 inputRange)
 
     if(result)
     {
-        fun(first);
+        func(first);
         inputRange.popFront();
     }
 
