@@ -23,7 +23,7 @@ auto spliceLines(Range)(Range input)
 
         private void trim()
         {
-            while(_input.startsWith('\\') && _input.dropOne.startsWith('\n'))
+            while(_input.startsWith('\\') && _input.save.dropOne.startsWith('\n'))
                 _input.popFrontExactly(2);
         }
 

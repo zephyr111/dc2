@@ -5,6 +5,7 @@ import std.traits;
 import std.algorithm.comparison;
 import std.algorithm.searching;
 import std.string;
+import utils;
 
 
 // Lazy range: consume not more char than requested
@@ -32,9 +33,9 @@ auto substituteTrigraph(Range)(Range input)
 
             if(first == '?')
             {
-                auto lookAhead = _input.dropOne;
+                auto lookAhead = _input.save.dropOne;
 
-                if(lookAhead.skipOver('?') && !lookAhead.empty)
+                if(lookAhead.skipIf('?') && !lookAhead.empty)
                 {
                     const long pos = "=/'()!<>-".indexOf(lookAhead.front);
 
@@ -53,7 +54,7 @@ auto substituteTrigraph(Range)(Range input)
 
             if(first == '?' && _input.startsWith('?'))
             {
-                auto lookAhead = _input.dropOne;
+                auto lookAhead = _input.save.dropOne;
 
                 if(!lookAhead.empty && "=/'()!<>-".canFind(lookAhead.front))
                     _input = lookAhead.dropOne;

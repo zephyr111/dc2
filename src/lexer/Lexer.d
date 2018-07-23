@@ -79,6 +79,8 @@ private class Lexer : ILexer, IGo
 ulong tokenCount = 0;
 auto s = MonoTime.currTime;
         auto acc = appender!string;
+
+        pragma(msg, "[FIXME] error duplication: QUID look ahead + error management");
         foreach(token ; dstr.trackLocation(_contexts[$-1].filename)
                                 .substituteTrigraph
                                 .spliceLines

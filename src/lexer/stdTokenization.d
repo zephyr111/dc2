@@ -116,7 +116,7 @@ auto stdTokenize(Range)(Range input, IErrorHandler errorHandler)
 
             if(first != '0') // decimal
                 lookAhead.forwardWhile!isDigit(acc);
-            else if(lookAhead.skipOver!(a => a.among('x', 'X'))) // hexadecimal
+            else if(lookAhead.skipIf!(a => a.among('x', 'X'))) // hexadecimal
                 lookAhead.forwardWhile!isHexDigit(acc), base = 16;
             else // octal
                 lookAhead.forwardWhile!isOctalDigit(acc), base = 8;

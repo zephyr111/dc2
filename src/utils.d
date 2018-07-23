@@ -8,11 +8,15 @@ import std.ascii;
 import std.utf;
 import std.conv;
 import std.traits;
+import std.container;
+import std.meta;
+import std.functional;
 
 
 // Forward elements from inputRange to outputRange until pred is true and update inputRange
 long forwardUntil(alias pred, R1, R2)(ref R1 inputRange, R2 outputRange)
-    if(isInputRange!R1 && isOutputRange!(R2, ElementType!R1))
+    if(isInputRange!R1 && isOutputRange!(R2, ElementType!R1)
+        && ifTestable!(typeof(inputRange.front), unaryFun!pred))
 {
     int count;
 
@@ -20,7 +24,7 @@ long forwardUntil(alias pred, R1, R2)(ref R1 inputRange, R2 outputRange)
     {
         auto first = inputRange.front;
 
-        if(pred(first))
+        if(unaryFun!pred(first))
             break;
 
         outputRange.put(first);
@@ -28,12 +32,12 @@ long forwardUntil(alias pred, R1, R2)(ref R1 inputRange, R2 outputRange)
     }
 
     return count;
-    //return refRange(&inputRange).tee(outputRange).countUntil!pred;
+    //return refRange(&inputRange).tee(outputRange).countUntil!(unaryFun!pred);
 }
 
 // Call func for each element of inputRange until pred is true and update inputRange
 long forwardUntil(alias pred, alias func, R1)(ref R1 inputRange)
-    if(isInputRange!R1)
+    if(isInputRange!R1 && ifTestable!(typeof(inputRange.front), unaryFun!pred))
 {
     int count;
 
@@ -41,20 +45,21 @@ long forwardUntil(alias pred, alias func, R1)(ref R1 inputRange)
     {
         auto first = inputRange.front;
 
-        if(pred(first))
+        if(unaryFun!pred(first))
             break;
 
-        func(first);
+        unaryFun!func(first);
         inputRange.popFront();
     }
 
     return count;
-    //return refRange(&inputRange).tee!func.countUntil!pred;
+    //return refRange(&inputRange).tee!(unaryFun!func).countUntil!(unaryFun!pred);
 }
 
 // Forward elements from inputRange to outputRange while pred is true and update inputRange
 long forwardWhile(alias pred, R1, R2)(ref R1 inputRange, R2 outputRange)
-    if(isInputRange!R1 && isOutputRange!(R2, ElementType!R1))
+    if(isInputRange!R1 && isOutputRange!(R2, ElementType!R1)
+        && ifTestable!(typeof(inputRange.front), unaryFun!pred))
 {
     int count;
 
@@ -62,7 +67,7 @@ long forwardWhile(alias pred, R1, R2)(ref R1 inputRange, R2 outputRange)
     {
         auto first = inputRange.front;
 
-        if(!pred(first))
+        if(!unaryFun!pred(first))
             break;
 
         outputRange.put(first);
@@ -70,12 +75,12 @@ long forwardWhile(alias pred, R1, R2)(ref R1 inputRange, R2 outputRange)
     }
 
     return count;
-    //return refRange(&inputRange).tee(outputRange).countUntil!(a => !pred(a));
+    //return refRange(&inputRange).tee(outputRange).countUntil!(a => !(unaryFun!pred(a)));
 }
 
 // Call func for each element of inputRange while pred is true and update inputRange
 long forwardWhile(alias pred, alias func, R1)(ref R1 inputRange)
-    if(isInputRange!R1)
+    if(isInputRange!R1 && ifTestable!(typeof(inputRange.front), unaryFun!pred))
 {
     int count;
 
@@ -83,26 +88,27 @@ long forwardWhile(alias pred, alias func, R1)(ref R1 inputRange)
     {
         auto first = inputRange.front;
 
-        if(!pred(first))
+        if(!unaryFun!pred(first))
             break;
 
-        func(first);
+        unaryFun!func(first);
         inputRange.popFront();
     }
 
     return count;
-    //return refRange(&inputRange).tee!func.countUntil!(a => !pred(a));
+    //return refRange(&inputRange).tee!(unaryFun!func).countUntil!(a => !(unaryFun!pred(a)));
 }
 
 // Forward one element if pred(inputRange.front) is true and update inputRange
 bool forwardIf(alias pred, R1, R2)(ref R1 inputRange, R2 outputRange)
-    if(isInputRange!R1 && isOutputRange!(R2, ElementType!R1))
+    if(isInputRange!R1 && isOutputRange!(R2, ElementType!R1)
+        && ifTestable!(typeof(inputRange.front), unaryFun!pred))
 {
     if(inputRange.empty)
         return false;
 
     auto first = inputRange.front;
-    auto result = pred(first);
+    auto result = unaryFun!pred(first);
 
     if(result)
     {
@@ -114,22 +120,45 @@ bool forwardIf(alias pred, R1, R2)(ref R1 inputRange, R2 outputRange)
 }
 
 // Call func if pred(inputRange.front) is true and update inputRange
-bool forwardIf(alias pred, alias func, R1)(ref R1 inputRange)
-    if(isInputRange!R1)
+bool forwardIf(alias pred, alias func, Range)(ref Range inputRange)
+    if(isInputRange!Range && ifTestable!(typeof(inputRange.front), unaryFun!pred))
 {
     if(inputRange.empty)
         return false;
 
     auto first = inputRange.front;
-    bool result = pred(first);
+    bool result = unaryFun!pred(first);
 
     if(result)
     {
-        func(first);
+        unaryFun!func(first);
         inputRange.popFront();
     }
 
     return result;
+}
+
+pragma(msg, "[OPTION] enable sliping by element rather than using only a predicate");
+// Skip the first element of inputRange if pred(element)
+bool skipIf(alias pred, Range)(ref Range inputRange)
+    if(isInputRange!Range && ifTestable!(typeof(inputRange.front), unaryFun!pred))
+{
+    if(inputRange.empty || !unaryFun!pred(inputRange.front))
+        return false;
+
+    inputRange.popFront();
+    return true;
+}
+
+// Skip the first element of inputRange if pred(firstElement, e)
+bool skipIf(alias pred = "a == b", Range, Element)(ref Range inputRange, Element e)
+    if(is(typeof(binaryFun!pred(inputRange.front, e))) && isInputRange!Range)
+{
+    if(inputRange.empty || !binaryFun!pred(inputRange.front, e))
+        return false;
+
+    inputRange.popFront();
+    return true;
 }
 
 // Look the longest prefix of inputRange that match with an element of elemsToFind
@@ -205,3 +234,65 @@ auto escape(Range)(Range inputRange)
 {
     return inputRange.map!escapeChar.join;
 }
+
+// InputRange/OutputRange that behave like a bufferized stack
+// Usefull for macro substitution or file inclusion
+// Added ranges are owned by the structure (hence, they must not be used or deleted)
+struct BufferedStack(Range)
+    if(isInputRange!Range)
+{
+    SList!Range _data;
+
+    @property bool empty()
+    {
+        return _data.empty;
+    }
+
+    @property auto front()
+    {
+        return _data.front.front;
+    }
+
+    void popFront()
+    {
+        _data.front.popFront();
+
+        if(_data.front.empty)
+            _data.stableRemoveFront();
+    }
+
+    void put(Range e)
+    {
+        _data.stableInsertFront(e);
+    }
+
+    static if(isForwardRange!Range)
+    {
+        @property auto save()
+        {
+            BufferedStack!Range result;
+            result._data = SList!Range(_data[].map!(a => a.save));
+            return result;
+        }
+    }
+};
+
+alias MergeRange(Ranges...) = ReturnType!(chain!(staticMap!(RefRange, Ranges)));
+
+// Merge multiples sub-ranges into a bigger unique merged range
+// Sub-ranges MUST exists as long as the resulting range is used
+void mergeRange(Ranges...)(out MergeRange!(Ranges) merged, ref Ranges subRanges)
+{
+    // Enable copying refRange internal pointers (rather than a per-value copy)
+    staticMap!(RefRange, Ranges) nullRefRanges;
+    static foreach(i, range; subRanges)
+        nullRefRanges[i] = refRange!(typeof(range))(null);
+    merged = chain(nullRefRanges);
+
+    // Actual internal pointer copy
+    staticMap!(RefRange, Ranges) refRanges;
+    static foreach(i, _; subRanges)
+        refRanges[i] = refRange(&subRanges[i]);
+    merged = chain(refRanges);
+}
+

@@ -87,7 +87,7 @@ auto ppcTokenize(Range)(Range input, IErrorHandler errorHandler)
 
             if(prefixed)
             {
-                auto lookAhead = _input.dropOne;
+                auto lookAhead = _input.save.dropOne;
                 if(lookAhead.empty || !lookAhead.front.among('"', '\''))
                     return Nullable!PpcToken();
                 _input = lookAhead;
@@ -152,7 +152,7 @@ auto ppcTokenize(Range)(Range input, IErrorHandler errorHandler)
             }
             while(!_input.empty && _input.front != strDelim);
 
-            if(!_input.skipOver(strDelim))
+            if(!_input.skipIf(strDelim))
             {
                 auto length = _input.pos - loc.pos;
                 _errorHandler.error("unterminated literal", loc.filename,
@@ -240,7 +240,7 @@ auto ppcTokenize(Range)(Range input, IErrorHandler errorHandler)
                         return PpcToken(PpcTokenType.EOF, tmpLoc).nullable;
                     }
                 }
-                while(!_input.skipOver('/'));
+                while(!_input.skipIf('/'));
             }
 
             loc.length = _input.pos - loc.pos;
@@ -307,7 +307,8 @@ auto ppcTokenize(Range)(Range input, IErrorHandler errorHandler)
             _input.forwardUntil!(a => a == last || a == '\n')(acc);
             auto lexem = acc.data;
 
-            if(!_input.skipOver(last))
+            pragma(msg, "[FIXME] possible bug (empty case + skipOver)");
+            if(!_input.skipIf(last))
             {
                 _input.popFrontN(1);
                 loc.length = _input.pos - loc.pos;
