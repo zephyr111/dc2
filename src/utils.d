@@ -263,7 +263,8 @@ struct BufferedStack(Range)
 
     void put(Range e)
     {
-        _data.stableInsertFront(e);
+        if(!e.empty)
+            _data.stableInsertFront(e);
     }
 
     static if(isForwardRange!Range)

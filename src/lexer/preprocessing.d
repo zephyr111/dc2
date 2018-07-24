@@ -80,12 +80,15 @@ auto preprocess(InputRange)(InputRange input, IErrorHandler errorHandler)
             with(PpcTokenType)
             {
                 Macro m;
+
+                _workingRange.findSkip!(a => a.type == SPACING);
+
+                if(!_workingRange.forwardIf!(a => a.type == IDENTIFIER, (a) {m.name = idTokenValue(a);}))
+                    return error("expecting identifier", _workingRange.front.location);
+
+                m.withArgs = _workingRange.skipIf!(a => a.type == LPAREN);
+
                 auto noSpaceInput = refRange(&_workingRange).filter!(a => a.type != SPACING);
-
-                if(!noSpaceInput.forwardIf!(a => a.type == IDENTIFIER, (a) {m.name = idTokenValue(a);}))
-                    return error("expecting identifier", noSpaceInput.front.location);
-
-                m.withArgs = noSpaceInput.skipIf!(a => a.type == LPAREN);
 
                 if(m.withArgs && !noSpaceInput.skipIf!(a => a.type == RPAREN))
                 {
@@ -116,7 +119,6 @@ auto preprocess(InputRange)(InputRange input, IErrorHandler errorHandler)
                     return error("unexpected `#`", withSharp.front.location);
 
                 macros[m.name] = m;
-                writeln("NEW MACRO:", m);
             }
         }
 
@@ -299,7 +301,6 @@ auto preprocess(InputRange)(InputRange input, IErrorHandler errorHandler)
                             int level = 0;
 
                             _workingRange.forwardWhile!((a) {
-                                writeln("[", a.location, a.type, "]");
                                 if(a.type == COMMA && level == 0)
                                     return false; // 1 param
                                 else if(a.type == LPAREN)
@@ -320,7 +321,9 @@ auto preprocess(InputRange)(InputRange input, IErrorHandler errorHandler)
                             return critical("internal error", startLoc);
 
                         // Macro argument matching & substitution
-                        if(m.args.length > params.data.length)
+                        if(m.args.empty && params.data == [[]])
+                            _macroPrefixRange.put(m.content);
+                        else if(m.args.length > params.data.length)
                             error("too few parameters", startLoc);
                         else if(m.args.length < params.data.length)
                             error("too many parameters", startLoc);
