@@ -21,8 +21,6 @@ import utils;
 auto preprocess(InputRange)(InputRange input, IErrorHandler errorHandler)
     if(isForwardRange!InputRange && is(ElementType!InputRange : PpcToken))
 {
-    // A class is required to avoid copying a refRange
-    // (in such a case, the internal pointer will reference the old copy)
     struct Result
     {
         private struct Macro
@@ -31,6 +29,15 @@ auto preprocess(InputRange)(InputRange input, IErrorHandler errorHandler)
             bool withArgs;
             string[] args;
             PpcToken[] content;
+
+            bool opEquals()(auto ref const Macro m) const
+            {
+                alias sameToken = (PpcToken a, PpcToken b) => a.type == b.type && a.value == b.value;
+                return name == m.name
+                        && withArgs == m.withArgs 
+                        && args == m.args
+                        && content.equal!sameToken(m.content);
+            }
         };
 
         alias MacroPrefixRange = BufferedStack!(PpcToken[]);
@@ -69,14 +76,26 @@ auto preprocess(InputRange)(InputRange input, IErrorHandler errorHandler)
             return a.value.get!PpcIdentifierTokenValue.name;
         }
 
-        private void parseDefine()
+        private auto error(string msg, TokenLocation loc)
         {
-            auto error(string msg, TokenLocation loc)
-            {
-                _errorHandler.error(msg, loc.filename, loc.line, loc.col);
-                _workingRange.findSkip!(a => a.type != PpcTokenType.NEWLINE);
-            }
+            _errorHandler.error(msg, loc.filename, loc.line, loc.col);
+        }
 
+        private auto critical(string msg, TokenLocation loc)
+        {
+            _errorHandler.error(msg, loc.filename, loc.line, loc.col);
+            _workingRange.findSkip!(a => a.type != PpcTokenType.NEWLINE);
+        }
+
+        private auto currLoc(TokenLocation fallbackLocation)
+        {
+            if(!_workingRange.empty)
+                return _workingRange.front.location;
+            return fallbackLocation;
+        }
+
+        private void parseDefine(TokenLocation loc)
+        {
             with(PpcTokenType)
             {
                 Macro m;
@@ -84,7 +103,7 @@ auto preprocess(InputRange)(InputRange input, IErrorHandler errorHandler)
                 _workingRange.findSkip!(a => a.type == SPACING);
 
                 if(!_workingRange.forwardIf!(a => a.type == IDENTIFIER, (a) {m.name = idTokenValue(a);}))
-                    return error("expecting identifier", _workingRange.front.location);
+                    return critical("expecting identifier", currLoc(loc));
 
                 m.withArgs = _workingRange.skipIf!(a => a.type == LPAREN);
 
@@ -95,19 +114,20 @@ auto preprocess(InputRange)(InputRange input, IErrorHandler errorHandler)
                     auto acc = appender!(string[]);
 
                     if(!noSpaceInput.forwardIf!(a => a.type == IDENTIFIER, a => acc.put(idTokenValue(a))))
-                        return error("expecting identifier or `)`", noSpaceInput.front.location);
+                        return critical("expecting identifier or `)`", currLoc(loc));
 
                     while(noSpaceInput.skipIf!(a => a.type == COMMA))
                         if(!noSpaceInput.forwardIf!(a => a.type == IDENTIFIER, a => acc.put(idTokenValue(a))))
-                            return error("expecting identifier", noSpaceInput.front.location);
+                            return critical("expecting identifier", currLoc(loc));
 
                     if(!noSpaceInput.skipIf!(a => a.type == RPAREN))
-                        return error("expecting `,` or `)`", noSpaceInput.front.location);
+                        return critical("expecting `,` or `)`", currLoc(loc));
 
                     m.args = acc.data;
-                }
 
-                pragma(msg, "[OPTION] check duplicated parameters");
+                    if(!m.args.replicates.empty)
+                        error(format!"duplicated macro parameter name `%s`"(m.args.replicates.front), loc);
+                }
 
                 auto acc = appender!(PpcToken[]);
                 _workingRange.findSkip!(a => a.type == SPACING);
@@ -116,25 +136,23 @@ auto preprocess(InputRange)(InputRange input, IErrorHandler errorHandler)
 
                 auto withSharp = m.content.find!(a => a.type == SHARP);
                 if(!withSharp.empty)
-                    return error("unexpected `#`", withSharp.front.location);
+                    error("`#` and `##` not yet supported", withSharp.front.location);
+
+                if(m.name in macros && macros[m.name] != m)
+                    error(format!"macro `%s` redefined differently"(m.name), loc);
 
                 macros[m.name] = m;
             }
         }
 
-        private void parseUndef()
+        private void parseUndef(TokenLocation loc)
         {
             with(PpcTokenType)
             {
                 auto noSpaceInput = refRange(&_workingRange).filter!(a => a.type != SPACING);
-                auto loc = noSpaceInput.front.location;
 
                 if(noSpaceInput.empty || noSpaceInput.front.type != IDENTIFIER)
-                {
-                    _errorHandler.error("expecting identifier", loc.filename, loc.line, loc.col);
-                    _workingRange.findSkip!(a => a.type != NEWLINE);
-                    return;
-                }
+                    return critical("expecting identifier", currLoc(loc));
 
                 macros.remove(idTokenValue(noSpaceInput.front));
                 noSpaceInput.popFront();
@@ -189,8 +207,8 @@ auto preprocess(InputRange)(InputRange input, IErrorHandler errorHandler)
                             _workingRange.findSkip!(a => a.type != NEWLINE);
                             break;
 
-                        case "define": parseDefine(); break;
-                        case "undef": parseUndef(); break;
+                        case "define": parseDefine(startLoc); break;
+                        case "undef": parseUndef(startLoc); break;
 
                         case "if":
                             writeln("[ignored if]");

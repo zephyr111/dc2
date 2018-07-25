@@ -161,6 +161,65 @@ bool skipIf(alias pred = "a == b", Range, Element)(ref Range inputRange, Element
     return true;
 }
 
+auto replicates(Range)(Range input)
+    if(isInputRange!Range)
+{
+    struct Result
+    {
+        alias Element = typeof(_input.front);
+
+        private bool[Element] _lookup;
+        private Range _input;
+
+        this(Range input)
+        {
+            _input = input;
+            findNext();
+        }
+
+        private void findNext()
+        {
+            while(!_input.empty)
+            {
+                auto val = _input.front;
+                auto ptr = val in _lookup;
+
+                if(ptr)
+                    break;
+
+                _lookup[val] = false;
+                _input.popFront();
+            }
+        }
+
+        @property bool empty()
+        {
+            return _input.empty;
+        }
+
+        @property auto front()
+        {
+            return _input.front;
+        }
+
+        void popFront()
+        {
+            _input.popFront();
+            findNext();
+        }
+
+        @property auto save()
+        {
+            Result res;
+            res._lookup = _lookup.dup;
+            res._input = _input.save;
+            return res;
+        }
+    }
+
+    return Result(input);
+}
+
 // Look the longest prefix of inputRange that match with an element of elemsToFind
 // Return the index in elemsToFind is returned or -1 if not found
 // Complexity: O(longuestKey)
