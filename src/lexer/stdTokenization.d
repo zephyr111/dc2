@@ -8,6 +8,7 @@ import std.typecons;
 import std.ascii;
 import std.conv;
 import std.exception;
+import std.format;
 import interfaces : IErrorHandler;
 import types;
 import utils;
@@ -209,8 +210,10 @@ auto stdTokenize(Range)(Range input, IErrorHandler errorHandler)
                     break;
 
                 default:
-                    pragma(msg, "[FIXME] TODO");
-                    enforce!LexerException(false, "unknown token type");
+                    string msg = format!"unknown token type `%s`"(first.type);
+                    _errorHandler.error(msg, first.location.filename,
+                                        first.location.line, first.location.col);
+                    _input.walkLength;
                     break;
             }
 

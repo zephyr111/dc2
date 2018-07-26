@@ -9,6 +9,7 @@ import std.algorithm.mutation;
 import std.typecons;
 import std.exception;
 import std.string;
+import std.format;
 import std.conv;
 import std.meta;
 import interfaces : IErrorHandler;
@@ -46,10 +47,11 @@ auto preprocess(InputRange)(InputRange input, IErrorHandler errorHandler)
         private InputRange _input;
         private IErrorHandler _errorHandler;
         private Nullable!PpcToken _result;
-        private Macro[string] macros;
+        private Macro[string] _macros;
         private MacroPrefixRange _macroPrefixRange;
         //private IncludePrefixRange _includeRange;
         private WorkingRange _workingRange;
+        private bool _lineStart = true;
 
         this(InputRange input, IErrorHandler errorHandler)
         {
@@ -138,10 +140,10 @@ auto preprocess(InputRange)(InputRange input, IErrorHandler errorHandler)
                 if(!withSharp.empty)
                     error("`#` and `##` not yet supported", withSharp.front.location);
 
-                if(m.name in macros && macros[m.name] != m)
+                if(m.name in _macros && _macros[m.name] != m)
                     error(format!"macro `%s` redefined differently"(m.name), loc);
 
-                macros[m.name] = m;
+                _macros[m.name] = m;
             }
         }
 
@@ -154,7 +156,7 @@ auto preprocess(InputRange)(InputRange input, IErrorHandler errorHandler)
                 if(noSpaceInput.empty || noSpaceInput.front.type != IDENTIFIER)
                     return critical("expecting identifier", currLoc(loc));
 
-                macros.remove(idTokenValue(noSpaceInput.front));
+                _macros.remove(idTokenValue(noSpaceInput.front));
                 noSpaceInput.popFront();
             }
         }
@@ -176,100 +178,102 @@ auto preprocess(InputRange)(InputRange input, IErrorHandler errorHandler)
             {
                 auto startLoc = _workingRange.front.location;
 
-                pragma(msg, "[FIXME] a preprocessing directive must start with a [NEWLINE]");
-                while(_workingRange.front.type == SHARP)
+                if(_lineStart)
                 {
-                    startLoc = _workingRange.front.location;
-
-                    _workingRange.popFront();
-
-                    _workingRange.findSkip!(a => a.type == SPACING);
-
-                    if(_workingRange.empty)
-                        return critical("unterminated directive", startLoc);
-
-                    auto tmp = _workingRange.front;
-
-                    if(tmp.type == NEWLINE)
-                        continue;
-
-                    if(tmp.type != IDENTIFIER)
-                        return critical("malformed directive", startLoc);
-
-                    string name = idTokenValue(tmp);
-                    _workingRange.popFront();
-
-                    pragma(msg, "[FIXME] support include, define/undef and if/ifdef/else/...");
-                    switch(name)
+                    while(_workingRange.front.type == SHARP)
                     {
-                        case "include":
-                            writeln("[ignored include]");
+                        startLoc = _workingRange.front.location;
+
+                        _workingRange.popFront();
+
+                        _workingRange.findSkip!(a => a.type == SPACING);
+
+                        if(_workingRange.empty)
+                            return critical("unterminated directive", startLoc);
+
+                        auto tmp = _workingRange.front;
+
+                        if(tmp.type == NEWLINE)
+                            continue;
+
+                        if(tmp.type != IDENTIFIER)
+                            return critical("malformed directive", startLoc);
+
+                        string name = idTokenValue(tmp);
+                        _workingRange.popFront();
+
+                        pragma(msg, "[FIXME] support include, define/undef and if/ifdef/else/...");
+                        switch(name)
+                        {
+                            case "include":
+                                writeln("[ignored include]");
+                                _workingRange.findSkip!(a => a.type != NEWLINE);
+                                break;
+
+                            case "define": parseDefine(startLoc); break;
+                            case "undef": parseUndef(startLoc); break;
+
+                            case "if":
+                                writeln("[ignored if]");
+                                _workingRange.findSkip!(a => a.type != NEWLINE);
+                                break;
+
+                            case "ifdef":
+                                writeln("[ignored ifdef]");
+                                _workingRange.findSkip!(a => a.type != NEWLINE);
+                                break;
+
+                            case "ifndef":
+                                writeln("[ignored ifndef]");
+                                _workingRange.findSkip!(a => a.type != NEWLINE);
+                                break;
+
+                            case "else":
+                                writeln("[ignored else]");
+                                _workingRange.findSkip!(a => a.type != NEWLINE);
+                                break;
+
+                            case "elif":
+                                writeln("[ignored elif]");
+                                _workingRange.findSkip!(a => a.type != NEWLINE);
+                                break;
+
+                            case "endif":
+                                writeln("[ignored endif]");
+                                _workingRange.findSkip!(a => a.type != NEWLINE);
+                                break;
+
+                            case "warning":
+                            case "error":
+                                auto tokenToPrint = refRange(&_workingRange).until!(a => a.type == NEWLINE);
+                                string msg = tokenToPrint.map!(a => a.toString).join.to!string.strip;
+                                if(name == "warning")
+                                    _errorHandler.warning(msg, startLoc.filename, startLoc.line, startLoc.col);
+                                else
+                                    _errorHandler.error(msg, startLoc.filename, startLoc.line, startLoc.col);
+                                break;
+
+                            case "pragma":
+                                _errorHandler.warning("ignored pragma", startLoc.filename, startLoc.line, startLoc.col);
+                                break;
+
+                            default:
+                                error("unknown directive", startLoc);
+                                _workingRange.findSkip!(a => a.type != NEWLINE);
+                                break;
+                        }
+
+                        if(!_workingRange.skipIf!(a => a.type == NEWLINE))
+                        {
                             _workingRange.findSkip!(a => a.type != NEWLINE);
-                            break;
+                            error("malformed directive", startLoc);
+                        }
 
-                        case "define": parseDefine(startLoc); break;
-                        case "undef": parseUndef(startLoc); break;
-
-                        case "if":
-                            writeln("[ignored if]");
-                            _workingRange.findSkip!(a => a.type != NEWLINE);
-                            break;
-
-                        case "ifdef":
-                            writeln("[ignored ifdef]");
-                            _workingRange.findSkip!(a => a.type != NEWLINE);
-                            break;
-
-                        case "ifndef":
-                            writeln("[ignored ifndef]");
-                            _workingRange.findSkip!(a => a.type != NEWLINE);
-                            break;
-
-                        case "else":
-                            writeln("[ignored else]");
-                            _workingRange.findSkip!(a => a.type != NEWLINE);
-                            break;
-
-                        case "elif":
-                            writeln("[ignored elif]");
-                            _workingRange.findSkip!(a => a.type != NEWLINE);
-                            break;
-
-                        case "endif":
-                            writeln("[ignored endif]");
-                            _workingRange.findSkip!(a => a.type != NEWLINE);
-                            break;
-
-                        case "warning":
-                        case "error":
-                            auto tokenToPrint = refRange(&_workingRange).until!(a => a.type == NEWLINE);
-                            string msg = tokenToPrint.map!(a => a.toString).join.to!string.strip;
-                            if(name == "warning")
-                                _errorHandler.warning(msg, startLoc.filename, startLoc.line, startLoc.col);
-                            else
-                                _errorHandler.error(msg, startLoc.filename, startLoc.line, startLoc.col);
-                            break;
-
-                        case "pragma":
-                            _errorHandler.warning("ignored pragma", startLoc.filename, startLoc.line, startLoc.col);
-                            break;
-
-                        default:
-                            error("unknown directive", startLoc);
-                            _workingRange.findSkip!(a => a.type != NEWLINE);
-                            break;
-                    }
-
-                    if(!_workingRange.skipIf!(a => a.type == NEWLINE))
-                    {
-                        _workingRange.findSkip!(a => a.type != NEWLINE);
-                        error("malformed directive", startLoc);
-                    }
-
-                    if(_workingRange.empty)
-                    {
-                        _result = Nullable!PpcToken();
-                        return;
+                        if(_workingRange.empty)
+                        {
+                            _result = Nullable!PpcToken();
+                            return;
+                        }
                     }
                 }
 
@@ -283,7 +287,7 @@ auto preprocess(InputRange)(InputRange input, IErrorHandler errorHandler)
                     if(token.type != IDENTIFIER)
                         break;
 
-                    Macro* mPtr = idTokenValue(token) in macros;
+                    Macro* mPtr = idTokenValue(token) in _macros;
 
                     if(mPtr is null)
                         break;
@@ -389,7 +393,9 @@ auto preprocess(InputRange)(InputRange input, IErrorHandler errorHandler)
                     return;
                 }
 
-                _result = _workingRange.front.nullable;
+                auto token = _workingRange.front;
+                _result = token.nullable;
+                _lineStart = token.type == NEWLINE || token.type == SPACING && _lineStart;
                 _workingRange.popFront();
             }
         }
