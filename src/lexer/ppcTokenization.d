@@ -323,12 +323,12 @@ auto ppcTokenize(Range)(Range input, IErrorHandler errorHandler)
 
         private void computeNext()
         {
-            // Priority: Literals>Identifiers, HeaderName>Operator, Number>Operators
-            if(!(_result = tryParseLiteral()).isNull) {}
+            // Priority: HeaderName>Operator, HeaderName>Literals, Literals>Identifiers, Number>Operators
+            if(!(_result = tryParseHeaderName()).isNull) {}
+            else if(!(_result = tryParseLiteral()).isNull) {}
             else if(!(_result = tryParseIdentifier()).isNull) {}
             else if(!(_result = tryParseSpacing()).isNull) {}
             else if(!(_result = tryParseNumber()).isNull) {}
-            else if(!(_result = tryParseHeaderName()).isNull) {}
             else if(!(_result = tryParseOperator()).isNull) {}
             else
             {
