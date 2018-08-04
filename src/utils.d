@@ -320,6 +320,11 @@ struct BufferedStack(Range)
             _data.stableRemoveFront();
     }
 
+    @property auto buffers()
+    {
+        return _data[];
+    }
+
     void put(Range e)
     {
         if(!e.empty)

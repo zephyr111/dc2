@@ -15,9 +15,16 @@ import std.meta;
 import std.container;
 import std.ascii;
 import std.functional;
+import std.file; // for #include
+import std.utf; // for #include
+import std.path; // for #include
 import interfaces : IErrorHandler;
 import types;
 import utils;
+import locationTracking; // for #include
+import trigraphSubstitution; // for #include
+import lineSplicing; // for #include
+import ppcTokenization; // for #include
 
 
 private auto bestLoc(Range)(Range input, TokenLocation fallbackLocation)
@@ -28,30 +35,10 @@ private auto bestLoc(Range)(Range input, TokenLocation fallbackLocation)
     return fallbackLocation;
 }
 
-// May consume more char than requested
-// Cannot take an InputRange as input due to look-ahead parsing
-auto preprocess(InputRange)(InputRange input, IErrorHandler errorHandler)
-    if(isForwardRange!InputRange && is(ElementType!InputRange : PpcToken))
+private template Preprocess(InputRange)
 {
     struct Result
     {
-        private struct Macro
-        {
-            string name;
-            bool withArgs;
-            string[] args;
-            PpcToken[] content;
-
-            bool opEquals()(auto ref const Macro m) const
-            {
-                alias sameToken = (PpcToken a, PpcToken b) => a.type == b.type && a.value == b.value;
-                return name == m.name
-                        && withArgs == m.withArgs 
-                        && args == m.args
-                        && content.equal!sameToken(m.content);
-            }
-        };
-
         struct ConditionalState
         {
             bool ifPart; // include #if, #ifdef, #ifndef and #elif
@@ -59,23 +46,30 @@ auto preprocess(InputRange)(InputRange input, IErrorHandler errorHandler)
         };
 
         alias MacroPrefixRange = BufferedStack!(PpcToken[]);
+        pragma(msg, "[WTF] using BufferedStack!Result cause the LDC compiler to crash...");
+        alias IncludeRange = Result[];
         alias WorkingRange = MergeRange!(MacroPrefixRange, InputRange);
 
         private InputRange _input;
         private IErrorHandler _errorHandler;
         private Nullable!PpcToken _result;
         private Macro[string] _macros;
+        private bool _isIncluded;
         private MacroPrefixRange _macroPrefixRange;
-        //private IncludePrefixRange _includeRange;
+        private IncludeRange _includeRange;
         private WorkingRange _workingRange;
         private bool _lineStart = true;
         private SList!ConditionalState _conditionalStates;
 
-        this(InputRange input, IErrorHandler errorHandler)
+        this(InputRange input, IErrorHandler errorHandler, Macro[string] prarentMacros)
         {
             _input = input;
             _errorHandler = errorHandler;
             updateWorkingRange();
+
+            _isIncluded = prarentMacros !is null;
+            if(_isIncluded)
+                _macros = prarentMacros;
 
             if(!_workingRange.empty)
                 computeNext();
@@ -240,9 +234,60 @@ auto preprocess(InputRange)(InputRange input, IErrorHandler errorHandler)
         {
             with(PpcTokenType)
             {
-                pragma(msg, "[FIXME] support file inclusion");
-                writeln("[ignored include]");
-                _workingRange.findSkip!(a => a.type != NEWLINE);
+                _workingRange.findSkip!(a => a.type == SPACING);
+                replaceFrontTokens();
+
+                PpcHeaderTokenValue value;
+
+                if(!_workingRange.forwardIf!(a => a.type == HEADER_NAME, (a) {value = a.value.get!PpcHeaderTokenValue;}))
+                    return directiveFailure("expecting header name", currLoc(loc));
+
+                string filename;
+
+                if(!value.isGlobal)
+                {
+                    pragma(msg, "[OPTION] check the CPATH environment variable");
+                    pragma(msg, "[OPTION] check user-specified additional include paths");
+                    if(value.name.exists && (value.name.isFile || value.name.isSymlink))
+                        filename = value.name;
+                }
+
+                if(filename.empty)
+                {
+                    enum includePaths = ["/usr/include/x86_64-linux-musl/"];
+                    // ["/usr/include/", "/usr/include/x86_64-linux-gnu/"]
+
+                    // search the file in the include paths
+                    foreach(includePath ; includePaths)
+                    {
+                        auto tmp = chainPath(includePath, value.name);
+
+                        if(tmp.exists && (tmp.isFile || tmp.isSymlink))
+                        {
+                            filename = tmp.array;
+                            break;
+                        }
+                    }
+                }
+
+                if(filename.empty)
+                    return directiveFailure(format!"unable to find the file `%s`"(value.name), currLoc(loc));
+
+                dstring dstr;
+
+                try
+                    dstr = readText(filename).byDchar.array;
+                catch(FileException)
+                    return directiveFailure(format!"unable to open the file `%s`"(filename), currLoc(loc));
+                catch(UTFException)
+                    return directiveFailure(format!"unable to decode the file `%s` using UTF-8"(filename), currLoc(loc));
+
+                auto range = dstr.trackLocation(filename)
+                                    .substituteTrigraph
+                                    .spliceLines
+                                    .ppcTokenize(_errorHandler)
+                                    .preprocess(_errorHandler, _macros);
+                _includeRange ~= range;
             }
         }
 
@@ -484,7 +529,19 @@ auto preprocess(InputRange)(InputRange input, IErrorHandler errorHandler)
                         return 0;
                     }
 
-                    return acc.data.to!long(base);
+                    pragma(msg, "[BUG] ldc 1.8.0 throw an ConvOverflowException with to!long(0, 8)");
+                    if(acc.data == "0")
+                        return 0;
+
+                    try
+                    {
+                        return acc.data.to!long(base);
+                    }
+                    catch(ConvOverflowException)
+                    {
+                        error("preprocessing integer overflow", input.bestLoc(loc));
+                        return 0;
+                    }
 
                 case LPAREN:
                     input.popFront();
@@ -851,18 +908,28 @@ auto preprocess(InputRange)(InputRange input, IErrorHandler errorHandler)
                     }
                 }
 
-                replaceFrontTokens();
-
-                if(_workingRange.empty)
+                if(_includeRange.empty)
                 {
-                    _result = Nullable!PpcToken();
-                    return;
-                }
+                    replaceFrontTokens();
 
-                PpcToken token = _workingRange.front;
-                _result = token.nullable;
-                _lineStart = token.type == NEWLINE || token.type == SPACING && _lineStart;
-                _workingRange.popFront();
+                    if(_workingRange.empty)
+                    {
+                        _result = Nullable!PpcToken();
+                        return;
+                    }
+
+                    PpcToken token = _workingRange.front;
+                    _result = token.nullable;
+                    _lineStart = token.type == NEWLINE || token.type == SPACING && _lineStart;
+                    _workingRange.popFront();
+                }
+                else
+                {
+                    _result = _includeRange.front.front.nullable;
+                    _includeRange.front.popFront();
+                    if(_includeRange.front.empty)
+                        _includeRange.popFront();
+                }
             }
         }
 
@@ -884,20 +951,44 @@ auto preprocess(InputRange)(InputRange input, IErrorHandler errorHandler)
                 computeNext();
         }
 
+        // Note: copying included range directly is forbidden
         pragma(msg, "[FIXME] implement a resource manager to load files once while enabling look-ahead");
-        @property auto save()
+        @property Result save()
         {
             Result result = this;
             result._input = _input.save;
             result._macroPrefixRange = _macroPrefixRange.save;
-            result._macros = _macros.dup;
+
+            if(!_isIncluded)
+                result._macros = _macros.dup;
+
+            result._includeRange = new Result[_includeRange.length];
+
+            foreach(ref r ; result._includeRange)
+            {
+                r = r.save;
+                r._macros = result._macros;
+            }
+
             result._conditionalStates = _conditionalStates.dup;
             result.updateWorkingRange();
             return result;
         }
     }
 
-    return Result(input, errorHandler);
+    // May consume more char than requested
+    // Cannot take an InputRange as input due to look-ahead parsing
+    auto preprocess(InputRange)(InputRange input, IErrorHandler errorHandler, Macro[string] prarentMacros = null)
+        if(isForwardRange!InputRange && is(ElementType!InputRange : PpcToken))
+    {
+        return Result(input, errorHandler, prarentMacros);
+    };
 }
 
-
+// May consume more char than requested
+// Cannot take an InputRange as input due to look-ahead parsing
+auto preprocess(InputRange)(InputRange input, IErrorHandler errorHandler, Macro[string] prarentMacros = null)
+    if(isForwardRange!InputRange && is(ElementType!InputRange : PpcToken))
+{
+    return Preprocess!InputRange.Result(input, errorHandler, prarentMacros);
+};

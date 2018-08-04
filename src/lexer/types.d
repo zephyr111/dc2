@@ -1,6 +1,7 @@
 import std.variant;
 import std.conv;
 import std.traits;
+import std.algorithm.comparison;
 import core.exception;
 import interfaces;
 import utils;
@@ -129,6 +130,23 @@ struct PpcToken
         }
     }
 }
+
+struct Macro
+{
+    string name;
+    bool withArgs;
+    string[] args;
+    PpcToken[] content;
+
+    bool opEquals()(auto ref const Macro m) const
+    {
+        alias sameToken = (PpcToken a, PpcToken b) => a.type == b.type && a.value == b.value;
+        return name == m.name
+                && withArgs == m.withArgs 
+                && args == m.args
+                && content.equal!sameToken(m.content);
+    }
+};
 
 class LexerException : Exception
 {
