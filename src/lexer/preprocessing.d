@@ -83,7 +83,7 @@ struct PrefixedRange(R1, R2)
 
 private template Preprocess(InputRange)
 {
-    struct Result
+    static struct Result
     {
         struct ConditionalState
         {

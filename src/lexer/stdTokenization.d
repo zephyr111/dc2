@@ -19,7 +19,7 @@ import utils;
 auto stdTokenize(Range)(Range input, IErrorHandler errorHandler)
     if(isForwardRange!Range && is(ElementType!Range : PpcToken))
 {
-    struct Result
+    static struct Result
     {
         static private StdTokenType[string] keywords;
 
@@ -240,7 +240,7 @@ auto stdTokenize(Range)(Range input, IErrorHandler errorHandler)
 
         @property auto save()
         {
-            Result result = this;
+            typeof(this) result = this;
             result._input = _input.save;
             return result;
         }

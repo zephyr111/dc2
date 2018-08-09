@@ -9,7 +9,7 @@ import std.traits;
 auto trackLocation(Range)(Range input, string filename)
     if(isForwardRange!Range && isSomeChar!(ElementEncodingType!Range) && !isConvertibleToString!Range)
 {
-    struct Result
+    static struct Result
     {
         private Range _input;
         private string _filename;
@@ -49,7 +49,7 @@ auto trackLocation(Range)(Range input, string filename)
 
         @property auto save()
         {
-            Result result = this;
+            typeof(this) result = this;
             result._input = _input.save;
             return result;
         }

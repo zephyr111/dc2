@@ -13,7 +13,7 @@ import utils;
 auto concatStrings(Range)(Range input, IErrorHandler errorHandler)
     if(isForwardRange!Range && is(ElementType!Range : PpcToken))
 {
-    struct Result
+    static struct Result
     {
         private Range _input;
         private IErrorHandler _errorHandler;
@@ -97,7 +97,7 @@ auto concatStrings(Range)(Range input, IErrorHandler errorHandler)
 
         @property auto save()
         {
-            Result result = this;
+            typeof(this) result = this;
             result._input = _input.save;
             return result;
         }

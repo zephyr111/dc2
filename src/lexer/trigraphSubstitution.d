@@ -13,7 +13,7 @@ import utils;
 auto substituteTrigraph(Range)(Range input)
     if(isForwardRange!Range && isSomeChar!(ElementEncodingType!Range) && !isConvertibleToString!Range)
 {
-    struct Result
+    static struct Result
     {
         private Range _input;
 
@@ -63,7 +63,7 @@ auto substituteTrigraph(Range)(Range input)
 
         @property auto save()
         {
-            return Result(_input.save);
+            return typeof(this)(_input.save);
         }
 
         @property auto filename() { return _input.filename; }

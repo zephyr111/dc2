@@ -16,7 +16,7 @@ import utils;
 auto ppcTokenize(Range)(Range input, IErrorHandler errorHandler)
     if(isForwardRange!Range && isSomeChar!(ElementEncodingType!Range) && !isConvertibleToString!Range)
 {
-    struct Result
+    static struct Result
     {
         // For header name lexing (only present within include directives)
         enum LexingState
@@ -371,7 +371,7 @@ auto ppcTokenize(Range)(Range input, IErrorHandler errorHandler)
 
         @property auto save()
         {
-            Result result = this;
+            typeof(this) result = this;
             result._input = _input.save;
             return result;
         }
