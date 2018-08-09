@@ -35,6 +35,52 @@ private auto bestLoc(Range)(Range input, TokenLocation fallbackLocation)
     return fallbackLocation;
 }
 
+
+struct PrefixedRange(R1, R2)
+    if(isInputRange!R1 && isInputRange!R2 && is(ElementType!R1 == ElementType!R2))
+{
+    R1 _prefixRange;
+    R2 _input;
+
+    this(R2 input, R1 prefixRange = R1())
+    {
+        _prefixRange = prefixRange;
+        _input = input;
+    }
+
+    @property bool empty()
+    {
+        return _prefixRange.empty && _input.empty;
+    }
+
+    void popFront()
+    {
+        if(_prefixRange.empty)
+            _input.popFront();
+        else
+            _prefixRange.popFront();
+    }
+
+    @property auto ref front()
+    {
+        if(_prefixRange.empty)
+            return _input.front;
+        return _prefixRange.front;
+    }
+
+    static if(isForwardRange!R1 && isForwardRange!R2)
+    {
+        @property auto save()
+        {
+            typeof(this) result = this;
+            result._prefixRange = _prefixRange.save;
+            result._input = _input.save;
+            return result;
+        }
+    }
+}
+
+
 private template Preprocess(InputRange)
 {
     struct Result
@@ -45,44 +91,34 @@ private template Preprocess(InputRange)
             bool evaluated;
         };
 
-        alias MacroPrefixRange = BufferedStack!(PpcToken[]);
+        alias MacroPrefixRange = BufferedStack!(PpcToken[], string[]);
         pragma(msg, "[WTF] using BufferedStack!Result cause the LDC compiler to crash...");
         alias IncludeRange = Result[];
-        alias WorkingRange = MergeRange!(MacroPrefixRange, InputRange);
+        alias WorkingRange = PrefixedRange!(MacroPrefixRange, InputRange);
 
-        private InputRange _input;
+        private WorkingRange _workingRange;
+        private IncludeRange _includeRange;
         private IErrorHandler _errorHandler;
         private Nullable!PpcToken _result;
-        private Macro[string] _macros;
+        private Macro[string]* _macros;
+        private Macro[string] _masterMacros;
         private bool _isIncluded;
-        private MacroPrefixRange _macroPrefixRange;
-        private IncludeRange _includeRange;
-        private WorkingRange _workingRange;
         private bool _lineStart = true;
         private SList!ConditionalState _conditionalStates;
 
-        this(InputRange input, IErrorHandler errorHandler, Macro[string] prarentMacros)
+        this(InputRange input, IErrorHandler errorHandler, Macro[string]* parentMacros)
         {
-            _input = input;
+            _workingRange = WorkingRange(input);
             _errorHandler = errorHandler;
-            updateWorkingRange();
 
-            _isIncluded = prarentMacros !is null;
+            _isIncluded = parentMacros !is null;
             if(_isIncluded)
-                _macros = prarentMacros;
+                _macros = parentMacros;
+            else
+                _macros = &_masterMacros;
 
             if(!_workingRange.empty)
                 computeNext();
-        }
-
-        this(this)
-        {
-            updateWorkingRange();
-        }
-
-        private void updateWorkingRange()
-        {
-            _workingRange.mergeRange!(MacroPrefixRange, InputRange)(_macroPrefixRange, _input);
         }
 
         private auto idTokenValue(PpcToken a)
@@ -128,21 +164,23 @@ private template Preprocess(InputRange)
                     if(token.type != IDENTIFIER)
                         break;
 
-                    Macro* mPtr = idTokenValue(token) in _macros;
+                    Macro* mPtr = idTokenValue(token) in *_macros;
 
                     if(mPtr is null)
                         break;
 
                     auto m = *mPtr;
 
+                    auto currState = !_workingRange._prefixRange.empty ? _workingRange._prefixRange.state : [];
+
+                    if(currState.retro.canFind(m.name))
+                        break;
+
+                    currState ~= m.name;
+
                     if(m.withArgs)
                     {
-                        //auto lookAhead = _workingRange.save; // does not make an actual copy...
-                        WorkingRange lookAhead;
-                        auto tmp1 = _macroPrefixRange.save;
-                        auto tmp2 = _input.save;
-                        lookAhead.mergeRange!(MacroPrefixRange, InputRange)(tmp1, tmp2);
-
+                        auto lookAhead = _workingRange.save;
                         lookAhead.popFront();
                         lookAhead.findSkip!(a => a.type == SPACING);
 
@@ -185,7 +223,7 @@ private template Preprocess(InputRange)
 
                         // Macro argument matching & substitution
                         if(m.args.empty && params.data == [[]])
-                            _macroPrefixRange.put(m.content);
+                            _workingRange._prefixRange.put(tuple(m.content, currState));
                         else if(m.args.length > params.data.length)
                             error("too few parameters", startLoc);
                         else if(m.args.length < params.data.length)
@@ -218,13 +256,13 @@ private template Preprocess(InputRange)
                                 }
                             }
 
-                            _macroPrefixRange.put(newTokens.data);
+                            _workingRange._prefixRange.put(tuple(newTokens.data, currState));
                         }
                     }
                     else
                     {
                         _workingRange.popFront();
-                        _macroPrefixRange.put(m.content);
+                        _workingRange._prefixRange.put(tuple(m.content, currState));
                     }
                 }
             }
@@ -287,7 +325,9 @@ private template Preprocess(InputRange)
                                     .spliceLines
                                     .ppcTokenize(_errorHandler)
                                     .preprocess(_errorHandler, _macros);
-                _includeRange ~= range;
+
+                if(!range.empty)
+                    _includeRange ~= range;
             }
         }
 
@@ -335,10 +375,10 @@ private template Preprocess(InputRange)
                 if(!withSharp.empty)
                     error("`#` and `##` not yet supported", withSharp.front.location);
 
-                if(m.name in _macros && _macros[m.name] != m)
+                if(m.name in *_macros && (*_macros)[m.name] != m)
                     error(format!"macro `%s` redefined differently"(m.name), loc);
 
-                _macros[m.name] = m;
+                (*_macros)[m.name] = m;
             }
         }
 
@@ -351,7 +391,7 @@ private template Preprocess(InputRange)
                 if(noSpaceInput.empty || noSpaceInput.front.type != IDENTIFIER)
                     return directiveFailure("expecting identifier", currLoc(loc));
 
-                _macros.remove(idTokenValue(noSpaceInput.front));
+                (*_macros).remove(idTokenValue(noSpaceInput.front));
                 noSpaceInput.popFront();
             }
         }
@@ -373,15 +413,10 @@ private template Preprocess(InputRange)
                         _workingRange.popFront();
                         continue;
                     }
-                    //auto lookAhead = _workingRange.save; // does not make an actual copy...
-                    WorkingRange lookAhead;
-                    auto tmp1 = _macroPrefixRange.save;
-                    auto tmp2 = _input.save;
-                    lookAhead.mergeRange!(MacroPrefixRange, InputRange)(tmp1, tmp2);
 
+                    auto lookAhead = _workingRange.save;
                     auto startLoc = lookAhead.front.location;
                     lookAhead.popFront();
-
                     lookAhead.findSkip!(a => a.type == SPACING);
 
                     if(lookAhead.empty)
@@ -484,7 +519,7 @@ private template Preprocess(InputRange)
                     }
 
                     name = idTokenValue(input.front);
-                    bool res = (name in _macros) != null;
+                    bool res = (name in *_macros) != null;
                     input.popFront();
 
                     if(paren && !input.skipIf!(a => a.type == RPAREN))
@@ -534,14 +569,11 @@ private template Preprocess(InputRange)
                         return 0;
 
                     try
-                    {
                         return acc.data.to!long(base);
-                    }
                     catch(ConvOverflowException)
-                    {
                         error("preprocessing integer overflow", input.bestLoc(loc));
-                        return 0;
-                    }
+
+                    return 0;
 
                 case LPAREN:
                     input.popFront();
@@ -775,9 +807,9 @@ private template Preprocess(InputRange)
                         auto name = idTokenValue(token);
 
                         static if(type == "ifdef")
-                            keepGroup = (name in _macros) !is null;
+                            keepGroup = (name in *_macros) !is null;
                         else
-                            keepGroup = (name in _macros) is null;
+                            keepGroup = (name in *_macros) is null;
 
                         _workingRange.popFront();
                         _workingRange.findSkip!(a => a.type == SPACING);
@@ -897,6 +929,7 @@ private template Preprocess(InputRange)
                 while(_lineStart && _workingRange.front.type == SHARP)
                 {
                     auto startLoc = _workingRange.front.location;
+
                     _workingRange.popFront();
 
                     parseDirective(startLoc);
@@ -925,8 +958,10 @@ private template Preprocess(InputRange)
                 }
                 else
                 {
+                    assert(!_includeRange.empty && !_includeRange.front.empty);
                     _result = _includeRange.front.front.nullable;
                     _includeRange.front.popFront();
+
                     if(_includeRange.front.empty)
                         _includeRange.popFront();
                 }
@@ -951,18 +986,20 @@ private template Preprocess(InputRange)
                 computeNext();
         }
 
-        // Note: copying included range directly is forbidden
+        // Note: included range should not be directly copied
         pragma(msg, "[FIXME] implement a resource manager to load files once while enabling look-ahead");
-        @property Result save()
+        @property typeof(this) save()
         {
-            Result result = this;
-            result._input = _input.save;
-            result._macroPrefixRange = _macroPrefixRange.save;
+            typeof(this) result = this;
+            result._workingRange = _workingRange.save;
 
             if(!_isIncluded)
-                result._macros = _macros.dup;
+            {
+                result._masterMacros = _masterMacros.dup;
+                result._macros = &result._masterMacros;
+            }
 
-            result._includeRange = new Result[_includeRange.length];
+            result._includeRange = new typeof(this)[_includeRange.length];
 
             foreach(ref r ; result._includeRange)
             {
@@ -971,24 +1008,23 @@ private template Preprocess(InputRange)
             }
 
             result._conditionalStates = _conditionalStates.dup;
-            result.updateWorkingRange();
             return result;
         }
     }
 
     // May consume more char than requested
     // Cannot take an InputRange as input due to look-ahead parsing
-    auto preprocess(InputRange)(InputRange input, IErrorHandler errorHandler, Macro[string] prarentMacros = null)
+    auto preprocess(InputRange)(InputRange input, IErrorHandler errorHandler, Macro[string]* parentMacros = null)
         if(isForwardRange!InputRange && is(ElementType!InputRange : PpcToken))
     {
-        return Result(input, errorHandler, prarentMacros);
+        return Result(input, errorHandler, parentMacros);
     };
 }
 
 // May consume more char than requested
 // Cannot take an InputRange as input due to look-ahead parsing
-auto preprocess(InputRange)(InputRange input, IErrorHandler errorHandler, Macro[string] prarentMacros = null)
+auto preprocess(InputRange)(InputRange input, IErrorHandler errorHandler, Macro[string]* parentMacros = null)
     if(isForwardRange!InputRange && is(ElementType!InputRange : PpcToken))
 {
-    return Preprocess!InputRange.Result(input, errorHandler, prarentMacros);
+    return Preprocess!InputRange.Result(input, errorHandler, parentMacros);
 };

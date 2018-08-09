@@ -11,6 +11,7 @@ import std.traits;
 import std.container;
 import std.meta;
 import std.functional;
+import std.typecons;
 
 
 // Forward elements from inputRange to outputRange until pred is true and update inputRange
@@ -297,10 +298,13 @@ auto escape(Range)(Range inputRange)
 // InputRange/OutputRange that behave like a bufferized stack
 // Usefull for macro substitution or file inclusion
 // Added ranges are owned by the structure (hence, they must not be used or deleted)
-struct BufferedStack(Range)
+struct BufferedStack(Range, RangeState = void)
     if(isInputRange!Range)
 {
-    SList!Range _data;
+    static if(is(RangeState : void))
+        SList!Range _data;
+    else
+        SList!(Tuple!(Range, RangeState)) _data;
 
     @property bool empty()
     {
@@ -309,15 +313,36 @@ struct BufferedStack(Range)
 
     @property auto front()
     {
-        return _data.front.front;
+        static if(is(RangeState : void))
+            return _data.front.front;
+        else
+            return _data.front[0].front;
+    }
+
+    static if(!is(RangeState : void))
+    {
+        @property auto state()
+        {
+            return _data.front[1];
+        }
     }
 
     void popFront()
     {
-        _data.front.popFront();
+        static if(is(RangeState : void))
+        {
+            _data.front.popFront();
 
-        if(_data.front.empty)
-            _data.stableRemoveFront();
+            if(_data.front.empty)
+                _data.stableRemoveFront();
+        }
+        else
+        {
+            _data.front[0].popFront();
+
+            if(_data.front[0].empty)
+                _data.stableRemoveFront();
+        }
     }
 
     @property auto buffers()
@@ -325,39 +350,34 @@ struct BufferedStack(Range)
         return _data[];
     }
 
-    void put(Range e)
+    static if(is(RangeState : void))
     {
-        if(!e.empty)
-            _data.stableInsertFront(e);
+        void put(Range e)
+        {
+            if(!e.empty)
+                _data.stableInsertFront(e);
+        }
+    }
+    else
+    {
+        void put(Tuple!(Range, RangeState) e)
+        {
+            if(!e[0].empty)
+                _data.stableInsertFront(e);
+        }
     }
 
     static if(isForwardRange!Range)
     {
         @property auto save()
         {
-            BufferedStack!Range result;
-            result._data = SList!Range(_data[].map!(a => a.save));
+            typeof(this) result;
+            static if(is(RangeState : void))
+                result._data = SList!Range(_data[].map!(a => a.save));
+            else
+                result._data = SList!(Tuple!(Range, RangeState))(_data[].map!(a => tuple(a[0].save, a[1].dup)));
             return result;
         }
     }
 };
-
-alias MergeRange(Ranges...) = ReturnType!(chain!(staticMap!(RefRange, Ranges)));
-
-// Merge multiples sub-ranges into a bigger unique merged range
-// Sub-ranges MUST exists as long as the resulting range is used
-void mergeRange(Ranges...)(out MergeRange!(Ranges) merged, ref Ranges subRanges)
-{
-    // Enable copying refRange internal pointers (rather than a per-value copy)
-    staticMap!(RefRange, Ranges) nullRefRanges;
-    static foreach(i, range; subRanges)
-        nullRefRanges[i] = refRange!(typeof(range))(null);
-    merged = chain(nullRefRanges);
-
-    // Actual internal pointer copy
-    staticMap!(RefRange, Ranges) refRanges;
-    static foreach(i, _; subRanges)
-        refRanges[i] = refRange(&subRanges[i]);
-    merged = chain(refRanges);
-}
 
