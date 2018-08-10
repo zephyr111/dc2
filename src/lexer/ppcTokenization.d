@@ -307,7 +307,6 @@ auto ppcTokenize(Range)(Range input, IErrorHandler errorHandler)
             _input.forwardUntil!(a => a == last || a == '\n')(acc);
             auto lexem = acc.data;
 
-            pragma(msg, "[FIXME] possible bug (empty case + skipOver)");
             if(!_input.skipIf(last))
             {
                 _input.popFrontN(1);
