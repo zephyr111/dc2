@@ -8,13 +8,10 @@ import std.algorithm.iteration;
 import std.algorithm.mutation;
 import std.typecons;
 import std.exception;
-import std.string;
 import std.format;
+import std.string;
 import std.conv;
-import std.meta;
 import std.container;
-import std.ascii;
-import std.functional;
 import std.file; // for #include
 import std.utf; // for #include
 import std.path; // for #include
@@ -25,6 +22,7 @@ import locationTracking; // for #include
 import trigraphSubstitution; // for #include
 import lineSplicing; // for #include
 import ppcTokenization; // for #include
+import parsing;
 
 
 private auto bestLoc(Range)(Range input, TokenLocation fallbackLocation)
@@ -456,278 +454,6 @@ private template Preprocess(InputRange)
             }
         }
 
-        // Parse a list of tokens glued by a specific type of token (specified in Args)
-        // Token types and binary functions to call are specified in a list of pair of Args 
-        // with the form (PpcTokenType, funcToCall)
-        // A call to funcToCall is made for each glue token found (from left to right)
-        private auto genEval(Range, alias evalFunc, Args...)(ref Range input, TokenLocation loc)
-            if(Args.length >= 2 && Args.length % 2 == 0)
-        {
-            auto res = evalFunc(input, loc);
-
-            while(!input.empty)
-            {
-                bool found = false;
-                auto token = input.front;
-                loc = token.location;
-
-                static foreach(i ; iota(0, Args.length, 2))
-                {{
-                    if(token.type == Args[i])
-                    {
-                        input.popFront();
-                        if(!input.empty)
-                            loc = token.location;
-                        res = binaryFun!(Args[i+1])(res, evalFunc(input, loc));
-                        found = true;
-                    }
-                }}
-
-                if(!found)
-                    return res;
-            }
-
-            return res;
-        }
-
-        private long evalPrimaryExpr(Range)(ref Range input, TokenLocation loc)
-        {
-            if(input.empty)
-            {
-                error("unexpected end of expression", loc);
-                return 0;
-            }
-
-            auto token = input.front;
-
-            with(PpcTokenType)
-            switch(token.type)
-            {
-                case IDENTIFIER:
-                    auto name = idTokenValue(token);
-                    input.popFront();
-
-                    if(name != "defined")
-                        return 0;
-
-                    bool paren = input.skipIf!(a => a.type == LPAREN);
-
-                    if(input.empty || input.front.type != IDENTIFIER)
-                    {
-                        error("missing macro name", input.bestLoc(loc));
-                        return 0;
-                    }
-
-                    name = idTokenValue(input.front);
-                    bool res = (name in *_macros) != null;
-                    input.popFront();
-
-                    if(paren && !input.skipIf!(a => a.type == RPAREN))
-                    {
-                        error("expecting `)`", input.bestLoc(loc));
-                        return 0;
-                    }
-
-                    return res;
-
-                case CHARACTER:
-                    auto value = token.value.get!PpcCharTokenValue.content;
-                    input.popFront();
-                    return cast(long)value;
-
-                case NUMBER:
-                    auto number = token.value.get!PpcNumberTokenValue.content;
-                    auto first = number.front;
-                    auto acc = appender!(char[]);
-                    int base = 10;
-
-                    number.popFront();
-                    acc.put(first);
-
-                    if(first != '0') // decimal
-                        number.forwardWhile!isDigit(acc);
-                    else if(number.skipIf!(a => a.among('x', 'X'))) // hexadecimal
-                        number.forwardWhile!isHexDigit(acc), base = 16;
-                    else // octal
-                        number.forwardWhile!isOctalDigit(acc), base = 8;
-
-                    static immutable auto suffix = ["u", "U", "ul", "lu", "UL", "LU", "l", "L"];
-                    auto id = number.startsWithAmong!suffix;
-                    if(id >= 0)
-                        number.popFrontExactly(suffix[id].length);
-
-                    input.popFront();
-
-                    if(!first.isDigit || !number.empty)
-                    {
-                        error("invalid preprocessing integer", input.bestLoc(loc));
-                        return 0;
-                    }
-
-                    pragma(msg, "[BUG] ldc 1.8.0 throw an ConvOverflowException with to!long(0, 8)");
-                    if(acc.data == "0")
-                        return 0;
-
-                    try
-                        return acc.data.to!long(base);
-                    catch(ConvOverflowException)
-                        error("preprocessing integer overflow", input.bestLoc(loc));
-
-                    return 0;
-
-                case LPAREN:
-                    input.popFront();
-
-                    if(input.empty)
-                    {
-                        error("unexpected end of expression", input.bestLoc(loc));
-                        return 0;
-                    }
-
-                    auto res = evalConstExpr(input, input.front.location);
-
-                    if(!input.skipIf!(a => a.type == RPAREN))
-                    {
-                        error("expecting `)`", input.bestLoc(loc));
-                        return 0;
-                    }
-
-                    return res;
-
-                default:
-                    error(format!"invalid preprocessor expression token `%s`"(input.front.to!string), input.bestLoc(loc));
-                    input.popFront();
-                    return 0;
-            }
-        }
-
-        private auto evalUnaryExpr(Range)(ref Range input, TokenLocation loc)
-        {
-            with(PpcTokenType)
-            {
-                auto acc = appender!(PpcToken[]);
-                input.forwardWhile!(a => a.type.among(OP_ADD, OP_SUB, OP_BNOT, OP_NOT))(acc);
-                auto res = evalPrimaryExpr(input, loc);
-
-                foreach_reverse(token ; acc.data)
-                {
-                    switch(token.type)
-                    {
-                        case OP_ADD: res = +res; break;
-                        case OP_SUB: res = -res; break;
-                        case OP_BNOT: res = ~res; break;
-                        case OP_NOT: res = res ? 0 : 1; break;
-                        default: throw new Exception("programming error");
-                    }
-                }
-
-                return res;
-            }
-        }
-
-        private auto check(alias op)(long a, long b)
-        {
-            if(b != 0)
-                return binaryFun!op(a, b);
-
-            error("invalid division by 0", currLoc(TokenLocation()));
-            return 0;
-        }
-
-        private auto evalMultiplicativeExpr(Range)(ref Range input, TokenLocation loc)
-        {
-            with(PpcTokenType)
-            return genEval!(Range, evalUnaryExpr, 
-                            OP_MUL, "a*b", OP_DIV, check!"a/b", OP_MOD, check!"a%b")(input, loc);
-        }
-
-        private auto evalAdditiveExpr(Range)(ref Range input, TokenLocation loc)
-        {
-            with(PpcTokenType)
-            return genEval!(Range, evalMultiplicativeExpr,
-                            OP_ADD, "a+b", OP_SUB, "a-b")(input, loc);
-        }
-
-        private auto evalShiftExpr(Range)(ref Range input, TokenLocation loc)
-        {
-            with(PpcTokenType)
-            return genEval!(Range, evalAdditiveExpr, 
-                            OP_LSHIFT, "a<<b", OP_RSHIFT, "a>>b")(input, loc);
-        }
-
-        private auto evalRelationalExpr(Range)(ref Range input, TokenLocation loc)
-        {
-            with(PpcTokenType)
-            return genEval!(Range, evalShiftExpr, 
-                            OP_LE, "(a<=b)?1:0", OP_LT, "(a<b)?1:0", 
-                            OP_GE, "(a>=b)?1:0", OP_GT, "(a>b)?1:0")(input, loc);
-        }
-
-        private auto evalEqualityExpr(Range)(ref Range input, TokenLocation loc)
-        {
-            with(PpcTokenType)
-            return genEval!(Range, evalRelationalExpr, 
-                            OP_EQ, "(a==b)?1:0", OP_NE, "(a!=b)?1:0")(input, loc);
-        }
-
-        private auto evalAndExpr(Range)(ref Range input, TokenLocation loc)
-        {
-            with(PpcTokenType)
-            return genEval!(Range, evalEqualityExpr, OP_BAND, "a&b")(input, loc);
-        }
-
-        private auto evalBinaryXorExpr(Range)(ref Range input, TokenLocation loc)
-        {
-            with(PpcTokenType)
-            return genEval!(Range, evalAndExpr, OP_BXOR, "a^b")(input, loc);
-        }
-
-        private auto evalBinaryOrExpr(Range)(ref Range input, TokenLocation loc)
-        {
-            with(PpcTokenType)
-            return genEval!(Range, evalBinaryXorExpr, OP_BOR, "a|b")(input, loc);
-        }
-
-        private auto evalLogicalAndExpr(Range)(ref Range input, TokenLocation loc)
-        {
-            with(PpcTokenType)
-            return genEval!(Range, evalBinaryOrExpr, OP_AND, "(a&&b)?1:0")(input, loc);
-        }
-
-        private auto evalLogicalOrExpr(Range)(ref Range input, TokenLocation loc)
-        {
-            with(PpcTokenType)
-            return genEval!(Range, evalLogicalAndExpr, OP_OR, "(a||b)?1:0")(input, loc);
-        }
-
-        private long evalConstExpr(Range)(ref Range input, TokenLocation loc)
-        {
-            auto condRes = evalLogicalOrExpr(input, loc);
-
-            if(!input.skipIf!(a => a.type == PpcTokenType.QMARK))
-                return condRes;
-
-            if(input.empty)
-                loc = input.front.location;
-
-            auto left = evalConstExpr(input, loc);
-
-            if(input.empty)
-            {
-                error("unexpected end of expression", loc);
-                return 0;
-            }
-
-            if(!input.skipIf!(a => a.type == PpcTokenType.COL))
-                error("unexpected token", input.front.location);
-
-            if(input.empty)
-                loc = input.front.location;
-
-            auto right = evalConstExpr(input, loc);
-            return condRes ? left : right;
-        }
-
         private void parseConditional(string type)(TokenLocation loc)
             if(["if", "ifdef", "ifndef", "else", "elif", "endif"].canFind(type))
         {
@@ -765,10 +491,7 @@ private template Preprocess(InputRange)
                     }
 
                     auto expr = acc.data;
-                    keepGroup = evalConstExpr(expr, expr.bestLoc(loc)) != 0;
-
-                    if(!expr.empty)
-                        error(format!"missing binary operator before `%s`"(expr.front.to!string), expr.bestLoc(loc));
+                    keepGroup = expr.evalConstantExpression(_errorHandler, *_macros, expr.bestLoc(loc));
 
                     static if(type == "if")
                     {
