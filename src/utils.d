@@ -162,6 +162,7 @@ bool skipIf(alias pred = "a == b", Range, Element)(ref Range inputRange, Element
     return true;
 }
 
+// Return a range with all the replicated entries found in input
 auto replicates(Range)(Range input)
     if(isInputRange!Range)
 {
@@ -267,6 +268,7 @@ long startsWithAmong(alias elemsToFind, Range)(Range inputRange)
     return -1;
 }
 
+// Return a pretty printable range/string of a given character
 auto escapeChar(dchar c)
 {
     static immutable ctrlChars = [

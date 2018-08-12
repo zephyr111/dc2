@@ -101,6 +101,8 @@ private template Preprocess(InputRange)
             return fallbackLocation;
         }
 
+        // Parse an #include preprocessing directive and save the resulting
+        // sub-range for that the included tokens can be forwarded later
         private void parseInclude(TokenLocation loc)
         {
             with(PpcTokenType)
@@ -164,6 +166,8 @@ private template Preprocess(InputRange)
             }
         }
 
+        // Parse a #define preprocessing directive
+        // and update the macro database
         private void parseDefine(TokenLocation loc)
         {
             with(PpcTokenType)
@@ -220,6 +224,8 @@ private template Preprocess(InputRange)
             }
         }
 
+        // Parse an #undef preprocessing directive
+        // and update the macro database
         private void parseUndef(TokenLocation loc)
         {
             with(PpcTokenType)
@@ -306,6 +312,8 @@ private template Preprocess(InputRange)
             }
         }
 
+        // Parse a #if-like preprocessing directive
+        // Evaluate #if/#elif expressions and skip the block when required
         private void parseConditional(string type)(TokenLocation loc)
             if(["if", "ifdef", "ifndef", "else", "elif", "endif"].canFind(type))
         {
@@ -439,6 +447,7 @@ private template Preprocess(InputRange)
             }
         }
 
+        // Parse a #warning or an #error preprocessing directive
         private void parseMessage(string type)(TokenLocation loc)
             if(type == "warning" || type == "error")
         {
@@ -454,12 +463,14 @@ private template Preprocess(InputRange)
             }
         }
 
+        // Parse a #pragma preprocessing directive
         private void parsePragma(TokenLocation loc)
         {
             _errorHandler.warning("ignored pragma", loc.filename, loc.line, loc.col);
             _workingRange.findSkip!(a => a.type != PpcTokenType.NEWLINE);
         }
 
+        // Parse any preprocessing directive
         private void parseDirective(TokenLocation loc)
         {
             with(PpcTokenType)

@@ -11,6 +11,8 @@ import types;
 import utils;
 
 
+// Range type resulting of the merge of two ranges
+// (use to perform fast macro substitutions)
 struct PrefixedRange(R1, R2)
     if(isInputRange!R1 && isInputRange!R2 && is(ElementType!R1 == ElementType!R2))
 {
@@ -58,6 +60,7 @@ struct PrefixedRange(R1, R2)
 alias MacroPrefixRange = BufferedStack!(PpcToken[], string[]);
 alias MacroRange(InputRange) = PrefixedRange!(MacroPrefixRange, InputRange);
 
+// Data structure to store a macro definition
 struct Macro
 {
     string name;
@@ -76,6 +79,8 @@ struct Macro
     }
 };
 
+// Data structure use to contain and lookup all defined 
+// macros during the preprocessing phase
 pragma(msg, "[OPTIM] put methods const when it is possible (impact the whole code)");
 final class MacroDb
 {
