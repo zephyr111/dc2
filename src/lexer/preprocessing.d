@@ -15,6 +15,7 @@ import std.container;
 import std.file; // for #include
 import std.utf; // for #include
 import std.path; // for #include
+import std.datetime; // for predefined macros
 import interfaces : IErrorHandler;
 import types;
 import utils;
@@ -103,6 +104,7 @@ private template Preprocess(InputRange)
         private bool _isIncluded;
         private bool _lineStart = true;
         private SList!ConditionalState _conditionalStates;
+        private DateTime now;
 
         this(InputRange input, IErrorHandler errorHandler, Macro[string]* parentMacros)
         {
@@ -113,7 +115,17 @@ private template Preprocess(InputRange)
             if(_isIncluded)
                 _macros = parentMacros;
             else
+            {
+                _masterMacros["__STDC__"] = Macro("__STDC__", true, false, [], []);
+                _masterMacros["__LINE__"] = Macro("__LINE__", true, false, [], []);
+                _masterMacros["__FILE__"] = Macro("__FILE__", true, false, [], []);
+                _masterMacros["__TIME__"] = Macro("__TIME__", true, false, [], []);
+                _masterMacros["__DATE__"] = Macro("__DATE__", true, false, [], []);
                 _macros = &_masterMacros;
+            }
+
+            pragma(msg, "[BUG] time should not be different in included file...");
+            now = cast(DateTime)Clock.currTime();
 
             if(!_workingRange.empty)
                 computeNext();
@@ -170,6 +182,50 @@ private template Preprocess(InputRange)
                     auto m = *mPtr;
 
                     auto currState = !_workingRange._prefixRange.empty ? _workingRange._prefixRange.state : [];
+
+                    if(m.predefined)
+                    {
+                        PpcToken[] newTokens;
+                        auto loc = currLoc(TokenLocation());
+
+                        switch(m.name)
+                        {
+                            case "__STDC__":
+                                auto val = PpcTokenValue(PpcNumberTokenValue("1"));
+                                newTokens = [PpcToken(NUMBER, loc, val)];
+                                break;
+
+                            case "__LINE__":
+                                auto val = PpcTokenValue(PpcNumberTokenValue(loc.line.to!string));
+                                newTokens = [PpcToken(NUMBER, loc, val)];
+                                break;
+
+                            case "__FILE__":
+                                auto val = PpcTokenValue(PpcStringTokenValue(false, loc.filename));
+                                newTokens = [PpcToken(STRING, loc, val)];
+                                break;
+
+                            case "__TIME__":
+                                import std.datetime;
+                                auto currTime = now.timeOfDay.toISOExtString;
+                                auto val = PpcTokenValue(PpcStringTokenValue(false, currTime));
+                                newTokens = [PpcToken(NUMBER, loc, val)];
+                                break;
+
+                            case "__DATE__":
+                                auto currDate = now.date.toISOExtString;
+                                auto val = PpcTokenValue(PpcStringTokenValue(false, currDate));
+                                newTokens = [PpcToken(NUMBER, loc, val)];
+                                break;
+
+                            default:
+                                throw new Exception("programming error");
+                        }
+
+                        _workingRange.popFront();
+                        _workingRange._prefixRange.put(tuple(newTokens, currState));
+                        break;
+                    }
 
                     if(currState.retro.canFind(m.name))
                         break;
@@ -340,6 +396,7 @@ private template Preprocess(InputRange)
                 if(!_workingRange.forwardIf!(a => a.type == IDENTIFIER, (a) {m.name = idTokenValue(a);}))
                     return directiveFailure("expecting identifier", currLoc(loc));
 
+                m.predefined = false;
                 m.withArgs = _workingRange.skipIf!(a => a.type == LPAREN);
 
                 auto noSpaceInput = refRange(&_workingRange).filter!(a => a.type != SPACING);
@@ -385,11 +442,19 @@ private template Preprocess(InputRange)
             with(PpcTokenType)
             {
                 auto noSpaceInput = refRange(&_workingRange).filter!(a => a.type != SPACING);
+                loc = currLoc(loc);
 
                 if(noSpaceInput.empty || noSpaceInput.front.type != IDENTIFIER)
-                    return directiveFailure("expecting identifier", currLoc(loc));
+                    return directiveFailure("expecting identifier", loc);
 
-                (*_macros).remove(idTokenValue(noSpaceInput.front));
+                string macroName = idTokenValue(noSpaceInput.front);
+
+                Macro* mPtr = macroName in *_macros;
+
+                if(mPtr !is null && (*mPtr).predefined)
+                    _errorHandler.warning("undefining builtin macro", loc.filename, loc.line, loc.col);
+
+                (*_macros).remove(macroName);
                 noSpaceInput.popFront();
             }
         }

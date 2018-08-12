@@ -134,6 +134,7 @@ struct PpcToken
 struct Macro
 {
     string name;
+    bool predefined;
     bool withArgs;
     string[] args;
     PpcToken[] content;
