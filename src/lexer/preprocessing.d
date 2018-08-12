@@ -15,7 +15,6 @@ import std.container;
 import std.file; // for #include
 import std.utf; // for #include
 import std.path; // for #include
-import std.datetime; // for predefined macros
 import interfaces : IErrorHandler;
 import types;
 import utils;
@@ -24,6 +23,7 @@ import trigraphSubstitution; // for #include
 import lineSplicing; // for #include
 import ppcTokenization; // for #include
 import parsing;
+import macros;
 
 
 private auto bestLoc(Range)(Range input, TokenLocation fallbackLocation)
@@ -33,52 +33,6 @@ private auto bestLoc(Range)(Range input, TokenLocation fallbackLocation)
         return input.front.location;
     return fallbackLocation;
 }
-
-
-struct PrefixedRange(R1, R2)
-    if(isInputRange!R1 && isInputRange!R2 && is(ElementType!R1 == ElementType!R2))
-{
-    R1 _prefixRange;
-    R2 _input;
-
-    this(R2 input, R1 prefixRange = R1())
-    {
-        _prefixRange = prefixRange;
-        _input = input;
-    }
-
-    @property bool empty()
-    {
-        return _prefixRange.empty && _input.empty;
-    }
-
-    void popFront()
-    {
-        if(_prefixRange.empty)
-            _input.popFront();
-        else
-            _prefixRange.popFront();
-    }
-
-    @property auto ref front()
-    {
-        if(_prefixRange.empty)
-            return _input.front;
-        return _prefixRange.front;
-    }
-
-    static if(isForwardRange!R1 && isForwardRange!R2)
-    {
-        @property auto save()
-        {
-            typeof(this) result = this;
-            result._prefixRange = _prefixRange.save;
-            result._input = _input.save;
-            return result;
-        }
-    }
-}
-
 
 private template Preprocess(InputRange)
 {
@@ -90,50 +44,36 @@ private template Preprocess(InputRange)
             bool evaluated;
         };
 
-        alias MacroPrefixRange = BufferedStack!(PpcToken[], string[]);
         pragma(msg, "[WTF] using BufferedStack!Result cause the LDC compiler to crash...");
         alias IncludeRange = Result[];
-        alias WorkingRange = PrefixedRange!(MacroPrefixRange, InputRange);
 
-        private WorkingRange _workingRange;
+        private MacroRange!InputRange _workingRange;
         private IncludeRange _includeRange;
         private IErrorHandler _errorHandler;
         private Nullable!PpcToken _result;
-        private Macro[string]* _macros;
-        private Macro[string] _masterMacros;
+        private MacroDb _macros;
         private bool _isIncluded;
         private bool _lineStart = true;
         private SList!ConditionalState _conditionalStates;
-        private DateTime now;
 
-        this(InputRange input, IErrorHandler errorHandler, Macro[string]* parentMacros)
+        this(InputRange input, IErrorHandler errorHandler, MacroDb parentMacros)
         {
-            _workingRange = WorkingRange(input);
+            _workingRange = MacroRange!InputRange(input);
             _errorHandler = errorHandler;
 
             _isIncluded = parentMacros !is null;
             if(_isIncluded)
                 _macros = parentMacros;
             else
-            {
-                _masterMacros["__STDC__"] = Macro("__STDC__", true, false, [], []);
-                _masterMacros["__LINE__"] = Macro("__LINE__", true, false, [], []);
-                _masterMacros["__FILE__"] = Macro("__FILE__", true, false, [], []);
-                _masterMacros["__TIME__"] = Macro("__TIME__", true, false, [], []);
-                _masterMacros["__DATE__"] = Macro("__DATE__", true, false, [], []);
-                _macros = &_masterMacros;
-            }
-
-            pragma(msg, "[BUG] time should not be different in included file...");
-            now = cast(DateTime)Clock.currTime();
+                _macros = new MacroDb();
 
             if(!_workingRange.empty)
                 computeNext();
         }
 
-        private auto idTokenValue(PpcToken a)
+        private auto idTokenValue(PpcToken token)
         {
-            return a.value.get!PpcIdentifierTokenValue.name;
+            return token.value.get!PpcIdentifierTokenValue.name;
         }
 
         private void error(string msg, TokenLocation loc)
@@ -161,173 +101,12 @@ private template Preprocess(InputRange)
             return fallbackLocation;
         }
 
-        // Apply macro substitution on the front tokens of the input so that 
-        // the next token can be safely read
-        void replaceFrontTokens()
-        {
-            with(PpcTokenType)
-            {
-                while(!_workingRange.empty)
-                {
-                    PpcToken token = _workingRange.front;
-
-                    if(token.type != IDENTIFIER)
-                        break;
-
-                    Macro* mPtr = idTokenValue(token) in *_macros;
-
-                    if(mPtr is null)
-                        break;
-
-                    auto m = *mPtr;
-
-                    auto currState = !_workingRange._prefixRange.empty ? _workingRange._prefixRange.state : [];
-
-                    if(m.predefined)
-                    {
-                        PpcToken[] newTokens;
-                        auto loc = currLoc(TokenLocation());
-
-                        switch(m.name)
-                        {
-                            case "__STDC__":
-                                auto val = PpcTokenValue(PpcNumberTokenValue("1"));
-                                newTokens = [PpcToken(NUMBER, loc, val)];
-                                break;
-
-                            case "__LINE__":
-                                auto val = PpcTokenValue(PpcNumberTokenValue(loc.line.to!string));
-                                newTokens = [PpcToken(NUMBER, loc, val)];
-                                break;
-
-                            case "__FILE__":
-                                auto val = PpcTokenValue(PpcStringTokenValue(false, loc.filename));
-                                newTokens = [PpcToken(STRING, loc, val)];
-                                break;
-
-                            case "__TIME__":
-                                import std.datetime;
-                                auto currTime = now.timeOfDay.toISOExtString;
-                                auto val = PpcTokenValue(PpcStringTokenValue(false, currTime));
-                                newTokens = [PpcToken(NUMBER, loc, val)];
-                                break;
-
-                            case "__DATE__":
-                                auto currDate = now.date.toISOExtString;
-                                auto val = PpcTokenValue(PpcStringTokenValue(false, currDate));
-                                newTokens = [PpcToken(NUMBER, loc, val)];
-                                break;
-
-                            default:
-                                throw new Exception("programming error");
-                        }
-
-                        _workingRange.popFront();
-                        _workingRange._prefixRange.put(tuple(newTokens, currState));
-                        break;
-                    }
-
-                    if(currState.retro.canFind(m.name))
-                        break;
-
-                    currState ~= m.name;
-
-                    if(m.withArgs)
-                    {
-                        auto lookAhead = _workingRange.save;
-                        lookAhead.popFront();
-                        lookAhead.findSkip!(a => a.type == SPACING);
-
-                        auto startLoc = _workingRange.front.location;
-
-                        if(!lookAhead.skipIf!(a => a.type == LPAREN))
-                            break;
-
-                        _workingRange = lookAhead;
-
-                        pragma(msg, "[OPTIM] avoid allocations");
-
-                        auto params = appender!(PpcToken[][]);
-
-                        // Argument parsing
-                        do
-                        {
-                            auto param = appender!(PpcToken[]);
-                            int level = 0;
-
-                            _workingRange.forwardWhile!((a) {
-                                if(a.type == COMMA && level == 0)
-                                    return false; // 1 param
-                                else if(a.type == LPAREN)
-                                    level++;
-                                else if(a.type == RPAREN && level-- <= 0)
-                                    return false; // end
-                                return true;
-                            })(param);
-
-                            if(_workingRange.empty)
-                                epicFailure("unterminated macro", startLoc);
-
-                            params.put(param.data);
-                        }
-                        while(_workingRange.skipIf!(a => a.type == COMMA));
-
-                        if(!_workingRange.skipIf!(a => a.type == RPAREN))
-                            return epicFailure("internal error", startLoc);
-
-                        // Macro argument matching & substitution
-                        if(m.args.empty && params.data == [[]])
-                            _workingRange._prefixRange.put(tuple(m.content, currState));
-                        else if(m.args.length > params.data.length)
-                            error("too few parameters", startLoc);
-                        else if(m.args.length < params.data.length)
-                            error("too many parameters", startLoc);
-                        else
-                        {
-                            auto newTokens = appender!(PpcToken[]);
-
-                            foreach(PpcToken mToken ; m.content)
-                            {
-                                pragma(msg, "[OPTIM] precomputation with a PARAM token type (with tokenValue = param pos)");
-
-                                if(mToken.type == IDENTIFIER)
-                                {
-                                    string param = idTokenValue(mToken);
-                                    long pos = -1;
-
-                                    foreach(ulong i ; 0..m.args.length)
-                                        if(param == m.args[i])
-                                            pos = i;
-
-                                    if(pos >= 0)
-                                        newTokens.put(params.data[pos]);
-                                    else
-                                        newTokens.put(mToken);
-                                }
-                                else
-                                {
-                                    newTokens.put(mToken);
-                                }
-                            }
-
-                            _workingRange._prefixRange.put(tuple(newTokens.data, currState));
-                        }
-                    }
-                    else
-                    {
-                        _workingRange.popFront();
-                        _workingRange._prefixRange.put(tuple(m.content, currState));
-                    }
-                }
-            }
-        }
-
         private void parseInclude(TokenLocation loc)
         {
             with(PpcTokenType)
             {
                 _workingRange.findSkip!(a => a.type == SPACING);
-                replaceFrontTokens();
+                _workingRange.macroSubstitution(_macros, _errorHandler);
 
                 PpcHeaderTokenValue value;
 
@@ -430,10 +209,14 @@ private template Preprocess(InputRange)
                 if(!withSharp.empty)
                     error("`#` and `##` not yet supported", withSharp.front.location);
 
-                if(m.name in *_macros && (*_macros)[m.name] != m)
-                    error(format!"macro `%s` redefined differently"(m.name), loc);
+                auto mOld = _macros.get(m.name, loc);
 
-                (*_macros)[m.name] = m;
+                if(!mOld.isNull && mOld.get != m)
+                    error(format!"macro `%s` redefined differently"(m.name), loc);
+                else if(!mOld.isNull && mOld.predefined)
+                    error(format!"redefining the built-in macro `%s`"(m.name), loc);
+
+                _macros.set(m);
             }
         }
 
@@ -449,12 +232,16 @@ private template Preprocess(InputRange)
 
                 string macroName = idTokenValue(noSpaceInput.front);
 
-                Macro* mPtr = macroName in *_macros;
+                auto m = _macros.get(noSpaceInput.front);
 
-                if(mPtr !is null && (*mPtr).predefined)
-                    _errorHandler.warning("undefining builtin macro", loc.filename, loc.line, loc.col);
+                if(!m.isNull)
+                {
+                    if(m.get.predefined)
+                        error(format!"undefining the built-in macro `%s`"(m.name), loc);
 
-                (*_macros).remove(macroName);
+                    _macros.remove(m);
+                }
+
                 noSpaceInput.popFront();
             }
         }
@@ -546,7 +333,7 @@ private template Preprocess(InputRange)
                             if(idTokenValue(token) == "defined")
                                 macroSubstitution = false;
                             else if(macroSubstitution)
-                                replaceFrontTokens();
+                                _workingRange.macroSubstitution(_macros, _errorHandler);
                             else
                                 macroSubstitution = true;
                         }
@@ -556,7 +343,7 @@ private template Preprocess(InputRange)
                     }
 
                     auto expr = acc.data;
-                    keepGroup = expr.evalConstantExpression(_errorHandler, *_macros, expr.bestLoc(loc));
+                    keepGroup = expr.evalConstantExpression(_errorHandler, _macros, expr.bestLoc(loc));
 
                     static if(type == "if")
                     {
@@ -594,10 +381,10 @@ private template Preprocess(InputRange)
                     {
                         auto name = idTokenValue(token);
 
-                        static if(type == "ifdef")
-                            keepGroup = (name in *_macros) !is null;
-                        else
-                            keepGroup = (name in *_macros) is null;
+                        keepGroup = _macros.canFind(name);
+
+                        static if(type == "ifndef")
+                            keepGroup = !keepGroup;
 
                         _workingRange.popFront();
                         _workingRange.findSkip!(a => a.type == SPACING);
@@ -731,7 +518,7 @@ private template Preprocess(InputRange)
 
                 if(_includeRange.empty)
                 {
-                    replaceFrontTokens();
+                    _workingRange.macroSubstitution(_macros, _errorHandler);
 
                     if(_workingRange.empty)
                     {
@@ -782,10 +569,7 @@ private template Preprocess(InputRange)
             result._workingRange = _workingRange.save;
 
             if(!_isIncluded)
-            {
-                result._masterMacros = _masterMacros.dup;
-                result._macros = &result._masterMacros;
-            }
+                result._macros = result._macros.dup;
 
             result._includeRange = new typeof(this)[_includeRange.length];
 
@@ -802,7 +586,7 @@ private template Preprocess(InputRange)
 
     // May consume more char than requested
     // Cannot take an InputRange as input due to look-ahead parsing
-    auto preprocess(InputRange)(InputRange input, IErrorHandler errorHandler, Macro[string]* parentMacros = null)
+    auto preprocess(InputRange)(InputRange input, IErrorHandler errorHandler, MacroDb parentMacros = null)
         if(isForwardRange!InputRange && is(ElementType!InputRange : PpcToken))
     {
         return Result(input, errorHandler, parentMacros);
@@ -811,8 +595,9 @@ private template Preprocess(InputRange)
 
 // May consume more char than requested
 // Cannot take an InputRange as input due to look-ahead parsing
-auto preprocess(InputRange)(InputRange input, IErrorHandler errorHandler, Macro[string]* parentMacros = null)
+auto preprocess(InputRange)(InputRange input, IErrorHandler errorHandler, MacroDb parentMacros = null)
     if(isForwardRange!InputRange && is(ElementType!InputRange : PpcToken))
 {
     return Preprocess!InputRange.Result(input, errorHandler, parentMacros);
 };
+

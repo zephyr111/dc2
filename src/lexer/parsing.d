@@ -13,6 +13,7 @@ import std.functional;
 import interfaces : IErrorHandler;
 import types;
 import utils;
+import macros;
 
 
 private static class EvalException : Exception
@@ -141,9 +142,9 @@ private static struct Parser(Range)
 {
     private RefRange!Range _input;
     private IErrorHandler _errorHandler;
-    private Macro[string] _macros;
+    private MacroDb _macros;
 
-    this(ref Range input, IErrorHandler errorHandler, Macro[string] macros)
+    this(ref Range input, IErrorHandler errorHandler, MacroDb macros)
     {
         _input = &input;
         _errorHandler = errorHandler;
@@ -232,7 +233,7 @@ private static struct Parser(Range)
                     epicFailure("missing macro name");
 
                 name = idTokenValue(_input.front);
-                bool res = (name in _macros) != null;
+                bool res = _macros.canFind(name);
                 _input.popFront();
 
                 if(paren && !_input.skipIf!(a => a.type == RPAREN))
@@ -463,7 +464,7 @@ private static struct Parser(Range)
 // May consume less char than provided when an error occurs
 bool evalConstantExpression(Range)(ref Range input, 
                                     IErrorHandler errorHandler, 
-                                    Macro[string] macros, 
+                                    MacroDb macros, 
                                     TokenLocation loc = TokenLocation())
     if(isInputRange!Range && is(ElementType!Range : PpcToken))
 {
