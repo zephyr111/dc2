@@ -34,6 +34,7 @@ private auto bestLoc(Range)(Range input, TokenLocation fallbackLocation)
     return fallbackLocation;
 }
 
+pragma(msg, "[OPTIM] avoid/rewrite findSkip since it call save internally (not needed)");
 private template Preprocess(InputRange)
 {
     static struct Result
@@ -44,10 +45,11 @@ private template Preprocess(InputRange)
             bool evaluated;
         };
 
+        alias WorkingRange = MacroRange!(LookAheadRange!InputRange);
         pragma(msg, "[WTF] using BufferedStack!Result cause the LDC compiler to crash...");
         alias IncludeRange = Result[];
 
-        private MacroRange!InputRange _workingRange;
+        private WorkingRange _workingRange;
         private IncludeRange _includeRange;
         private IErrorHandler _errorHandler;
         private Nullable!PpcToken _result;
@@ -58,7 +60,7 @@ private template Preprocess(InputRange)
 
         this(InputRange input, IErrorHandler errorHandler, MacroDb parentMacros)
         {
-            _workingRange = MacroRange!InputRange(input);
+            _workingRange = WorkingRange(lookAhead(input));
             _errorHandler = errorHandler;
 
             _isIncluded = parentMacros !is null;
@@ -596,18 +598,18 @@ private template Preprocess(InputRange)
     }
 
     // May consume more char than requested
-    // Cannot take an InputRange as input due to look-ahead parsing
+    // Perform a look-ahead parsing
     auto preprocess(InputRange)(InputRange input, IErrorHandler errorHandler, MacroDb parentMacros = null)
-        if(isForwardRange!InputRange && is(ElementType!InputRange : PpcToken))
+        if(isInputRange!InputRange && is(ElementType!InputRange : PpcToken))
     {
         return Result(input, errorHandler, parentMacros);
     };
 }
 
 // May consume more char than requested
-// Cannot take an InputRange as input due to look-ahead parsing
+// Perform a look-ahead parsing
 auto preprocess(InputRange)(InputRange input, IErrorHandler errorHandler, MacroDb parentMacros = null)
-    if(isForwardRange!InputRange && is(ElementType!InputRange : PpcToken))
+    if(isInputRange!InputRange && is(ElementType!InputRange : PpcToken))
 {
     return Preprocess!InputRange.Result(input, errorHandler, parentMacros);
 };

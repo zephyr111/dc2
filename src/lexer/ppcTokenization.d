@@ -12,7 +12,8 @@ import utils;
 
 
 // May consume more char than requested
-// Cannot take an InputRange as input due to look-ahead parsing
+// Perform a look-ahead parsing
+// Cannot take an InputRange as input without copying data, which is expensive
 auto ppcTokenize(Range)(Range input, IErrorHandler errorHandler)
     if(isForwardRange!Range && isSomeChar!(ElementEncodingType!Range) && !isConvertibleToString!Range)
 {

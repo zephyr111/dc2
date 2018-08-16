@@ -15,7 +15,7 @@ import utils;
 
 
 // May consume more char than requested
-// Cannot take an InputRange as input due to look-ahead parsing
+// Perform a look-ahead parsing
 auto stdTokenize(Range)(Range input, IErrorHandler errorHandler)
     if(isForwardRange!Range && is(ElementType!Range : PpcToken))
 {
@@ -23,7 +23,7 @@ auto stdTokenize(Range)(Range input, IErrorHandler errorHandler)
     {
         static private StdTokenType[string] keywords;
 
-        private Range _input;
+        private LookAheadRange!Range _input;
         private IErrorHandler _errorHandler;
         private Nullable!StdToken _result;
 
@@ -46,7 +46,7 @@ auto stdTokenize(Range)(Range input, IErrorHandler errorHandler)
 
         this(Range input, IErrorHandler errorHandler)
         {
-            _input = input;
+            _input = lookAhead(input);
             _errorHandler = errorHandler;
 
             if(!_input.empty)

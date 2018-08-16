@@ -9,18 +9,18 @@ import utils;
 
 
 // May consume more char than requested
-// Cannot take an InputRange as input due to look-ahead parsing
+// Perform a look-ahead parsing
 auto concatStrings(Range)(Range input, IErrorHandler errorHandler)
-    if(isForwardRange!Range && is(ElementType!Range : PpcToken))
+    if(isInputRange!Range && is(ElementType!Range : PpcToken))
 {
     static struct Result
     {
-        private Range _input;
+        private LookAheadRange!Range _input;
         private IErrorHandler _errorHandler;
 
         this(Range input, IErrorHandler errorHandler)
         {
-            _input = input;
+            _input = lookAhead(input);
             _errorHandler = errorHandler;
         }
 
@@ -101,11 +101,6 @@ auto concatStrings(Range)(Range input, IErrorHandler errorHandler)
             result._input = _input.save;
             return result;
         }
-
-        /*@property auto filename() { return _input.filename; }
-        @property auto line() { return _input.line; }
-        @property auto col() { return _input.col; }
-        @property auto pos() { return _input.pos; }*/
     }
 
     return Result(input, errorHandler);

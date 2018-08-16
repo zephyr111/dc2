@@ -3,6 +3,7 @@ import std.range.primitives;
 import std.algorithm.iteration;
 import std.algorithm.searching;
 import std.algorithm.sorting;
+import std.algorithm.mutation;
 import std.string;
 import std.ascii;
 import std.utf;
@@ -382,4 +383,245 @@ struct BufferedStack(Range, RangeState = void)
         }
     }
 };
+
+// A fast growable circular queue
+struct CircularQueue(T)
+{
+    private size_t _length;
+    private size_t _first;
+    private size_t _last;
+    private T[] _data = [T.init];
+ 
+    this(T[] items...)
+    {
+        foreach(x; items)
+            put(x);
+    }
+
+    @property typeof(this) dup() // TODO: const ???
+    {
+        typeof(this) res = this;
+        res._data = res._data.dup;
+        return res;
+    }
+ 
+    @property bool empty() const pure
+    {
+        return _length == 0;
+    }
+ 
+    @property T front()
+    {
+        assert(_length != 0);
+        return _data[_first];
+    }
+ 
+    @property auto length() const
+    {
+        return _length;
+    }
+ 
+    T opIndex(in size_t i)
+    {
+        assert(i < _length);
+        return _data[(_first + i) & (_data.length - 1)];
+    }
+ 
+    void put(T item)
+    {
+        if(_length >= _data.length)
+        {
+            immutable oldALen = _data.length;
+            _data.length *= 2;
+
+            if(_last < _first)
+            {
+                _data[oldALen .. oldALen+_last+1] = _data[0 .. _last+1];
+                static if(hasIndirections!T)
+                    _data[0 .. _last+1] = T.init; // Help for the GC.
+                _last += oldALen;
+            }
+        }
+
+        _last = (_last + 1) & (_data.length - 1);
+        _data[_last] = item;
+        _length++;
+    }
+
+    void popFront()
+    {
+        assert(_length != 0);
+        static if(hasIndirections!T)
+            _data[_first] = T.init; // Help for the GC.
+        _first = (_first + 1) & (_data.length - 1);
+        _length--;
+    }
+}
+
+// See lookAhead function
+private struct LookAhead(Range)
+{
+    alias This = typeof(this);
+    alias Element = typeof(Range.front);
+
+    private final class Local
+    {
+        CircularQueue!Element data;
+        int count = 0;
+    }
+
+    private final class Shared
+    {
+        Range input;
+        Local[] locals;
+
+        this(Range input, Local[] locals)
+        {
+            this.input = input;
+            this.locals = locals;
+        }
+    }
+
+    private Shared _shared;
+    private Local _local;
+
+    this(Range input)
+    {
+        _local = new Local();
+        _shared = new Shared(input, [_local]);
+    }
+
+    private this(Shared sharedPtr, Local local)
+    {
+        assert(sharedPtr !is null);
+        assert(local !is null);
+        _local = new Local();
+        _local.data = local.data.dup;
+        _shared = sharedPtr;
+        _shared.locals ~= _local;
+    }
+
+    this(this)
+    {
+        assert(_local !is null);
+        _local.count++;
+    }
+
+    ~this()
+    {
+        assert(_local !is null && _shared !is null);
+        assert(_local.count >= 0);
+
+        if(_local.count-- == 0)
+            _shared.locals = _shared.locals.remove!(a => a is _local);
+    }
+
+    @property bool empty()
+    {
+        assert(_local !is null && _shared !is null);
+        return _shared.input.empty && _local.data.empty;
+    }
+
+    @property auto front()
+    {
+        assert(_local !is null && _shared !is null);
+
+        if(!_local.data.empty)
+            return _local.data.front;
+
+        return _shared.input.front;
+    }
+
+    void popFront()
+    {
+        assert(_local !is null && _shared !is null);
+
+        if(!_local.data.empty)
+            return _local.data.popFront();
+
+        auto elem = _shared.input.front;
+
+        foreach(e ; _shared.locals)
+            if(e !is _local)
+                e.data.put(elem);
+
+        _shared.input.popFront();
+    }
+
+    @property auto save()
+    {
+        return This(_shared, _local);
+    }
+}
+
+// A good candidate for a faster look-ahead parsing, that rely on 
+// saving/restoring states manually preventing GC-related overheads
+// This break the forward range API and so the possibility to 
+// call many phobos functions...
+/*struct FastLookAhead(Range)
+{
+    alias This = typeof(this);
+    alias Element = typeof(Range.front);
+
+    private Range _input;
+    private CircularQueue!Element _data;
+    private bool _register = false;
+
+    this(Range input)
+    {
+        _input = input;
+    }
+
+    @property bool empty()
+    {
+        return _input.empty && _data.empty;
+    }
+
+    @property auto front()
+    {
+        if(!_data.empty)
+            return _data.front;
+        return _input.front;
+    }
+
+    void popFront()
+    {
+        if(_register)
+            _data.put(_input.front);
+        else if(!_data.empty)
+            return _data.popFront();
+        _input.popFront();
+    }
+
+    @property void saveState()
+    {
+        assert(!_register && _data.empty);
+        _register = true;
+    }
+
+    @property void dropState()
+    {
+        assert(_register);
+        _register = false;
+        _data.walkLength;
+    }
+
+    @property void restoreState()
+    {
+        assert(_register);
+        _register = false;
+    }
+}*/
+
+// Transform an input range to a forward range by temporary 
+// saving elements into a shared local data structure
+// This enable look-ahead parsing (but may introduce a significant overhead)
+// The amount of silmutaneous saved ranges should be small to minimize overheads
+auto lookAhead(Range)(Range input)
+    if(isInputRange!Range)
+{
+    return LookAhead!Range(input);
+}
+
+alias LookAheadRange(Range) = LookAhead!Range;
 
