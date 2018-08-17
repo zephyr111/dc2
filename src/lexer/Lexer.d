@@ -18,8 +18,6 @@ pragma(msg, "[BUG] [Issue 19020] findSkip, findSplit and findSplitBefore return 
 pragma(msg, "[NOTE] integers and numbers size are bounded by compiler");
 pragma(msg, "[CHECK] check support of UTF-8 (code & filenames)");
 pragma(msg, "[FIXME] implement TYPE/ENUM/(MACRO?) recognition by interacting with the parser");
-pragma(msg, "[FIXME] support macro/defines definition/replacement (recursively) & expressions in #ifXXX");
-pragma(msg, "[FIXME] support merging strings");
 private class Lexer : ILexer, IGo
 {
     private
@@ -79,7 +77,6 @@ ulong tokenCount = 0;
 auto s = MonoTime.currTime;
         auto acc = appender!string;
 
-        pragma(msg, "[FIXME] error duplication: QUID look ahead + error management");
         foreach(token ; dstr.trackLocation(_contexts[$-1].filename)
                                 .substituteTrigraph
                                 .spliceLines

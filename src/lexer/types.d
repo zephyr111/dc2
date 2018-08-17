@@ -23,7 +23,7 @@ struct PpcIdentifierTokenValue
     string name;
 }
 
-pragma(msg, "[OPTIM] Use a range to avoid allocations OR tack the string slice from the source range (if locLength ok) (OR tweak the appender)");
+pragma(msg, "[OPTIM] Use a range to avoid allocations OR tack the string slice from the source range (if locLength ok)");
 struct PpcNumberTokenValue
 {
     string content;

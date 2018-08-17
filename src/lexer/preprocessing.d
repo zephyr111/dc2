@@ -259,6 +259,7 @@ private template Preprocess(InputRange)
         {
             with(PpcTokenType)
             {
+                SList!bool condStates;
                 int level = 0;
 
                 while(!_workingRange.empty)
@@ -291,18 +292,31 @@ private template Preprocess(InputRange)
                     string name = idTokenValue(tmp);
                     lookAhead.popFront();
 
-                    pragma(msg, "[FIXME] to probably adapt when file inclusion will be implemented");
-                    pragma(msg, "[FIXME] check else/elif have a matching if (per level)");
-                    pragma(msg, "[FIXME] check elif are before else (per level)");
                     switch(name)
                     {
-                        case "if": level++; break;
-                        case "ifdef": level++; break;
-                        case "ifndef": level++; break;
-                        case "else": if(level <= 0) return; break;
-                        case "elif": if(level <= 0) return; break;
-                        case "endif": if(level-- <= 0) return; break;
-                        default: break;
+                        case "if":
+                        case "ifdef":
+                        case "ifndef":
+                            condStates.insertFront(true);
+                            break;
+
+                        case "elif":
+                        case "else":
+                            if(condStates.empty)
+                                return;
+                            if(!condStates.front)
+                                return epicFailure(format!"#%s without #if"(name), lookAhead.bestLoc(loc));
+                            condStates.front = name == "elif";
+                            break;
+
+                        case "endif":
+                            if(condStates.empty)
+                                return;
+                            condStates.removeFront();
+                            break;
+
+                        default:
+                            break;
                     }
 
                     _workingRange = lookAhead;

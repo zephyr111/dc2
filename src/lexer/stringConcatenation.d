@@ -55,7 +55,7 @@ auto concatStrings(Range)(Range input, IErrorHandler errorHandler)
             if(firstToken.type != secondToken.type)
                 return firstToken;
 
-            pragma(msg, "[OPT] handle better wide string (cf. encoding)");
+            pragma(msg, "[OPTION] handle better wide string (cf. encoding)");
             auto location = firstToken.location;
             location.length = accLength + secondToken.location.length;
             auto firstValue = firstToken.value.get!PpcStringTokenValue;

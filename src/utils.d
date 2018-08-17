@@ -140,7 +140,6 @@ bool forwardIf(alias pred, alias func, Range)(ref Range inputRange)
     return result;
 }
 
-pragma(msg, "[OPTION] enable sliping by element rather than using only a predicate");
 // Skip the first element of inputRange if pred(element)
 bool skipIf(alias pred, Range)(ref Range inputRange)
     if(isInputRange!Range && ifTestable!(typeof(inputRange.front), unaryFun!pred))
@@ -232,7 +231,7 @@ long startsWithAmong(alias elemsToFind, Range)(Range inputRange)
 {
     auto computeIndices(T)(T elems)
     {
-        import std.algorithm.sorting : SwapStrategy;
+        import std.algorithm.mutation : SwapStrategy;
         auto index = iota(elems.length).array;
         elems.makeIndex!((a, b) => a.walkLength>b.walkLength, SwapStrategy.stable)(index);
         return index;

@@ -240,7 +240,8 @@ void macroSubstitution(Range)(ref Range input, MacroDb macros, IErrorHandler err
 
                 pragma(msg, "[OPTIM] avoid allocations");
 
-                auto params = appender!(PpcToken[][]);
+                static auto params = appender!(PpcToken[][]);
+                params.clear();
 
                 // Argument parsing
                 do
