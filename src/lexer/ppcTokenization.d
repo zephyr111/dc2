@@ -79,7 +79,7 @@ auto ppcTokenize(Range)(Range input, IErrorHandler errorHandler)
         {
             const auto first = _input.front;
 
-            if(!first.among('L', '"', '\''))
+            if(_lexingState == LexingState.INCLUDE_FOUND || !first.among('L', '"', '\''))
                 return Nullable!PpcToken();
 
             auto loc = TokenLocation(_input.filename, _input.line, _input.col, _input.pos, 0);
@@ -185,6 +185,9 @@ auto ppcTokenize(Range)(Range input, IErrorHandler errorHandler)
             if(!first.isAlpha && first != '_')
                 return Nullable!PpcToken();
 
+            if(first == 'L' && _input.save.dropOne.startsWithAmong!(["\"", "'"]) >= 0)
+                return Nullable!PpcToken();
+
             auto loc = TokenLocation(_input.filename, _input.line, _input.col, _input.pos, 0);
 
             static auto acc = appender!(char[]);
@@ -274,7 +277,9 @@ auto ppcTokenize(Range)(Range input, IErrorHandler errorHandler)
         {
             const auto first = _input.front;
 
-            if(!first.isPunctuation || first.among('@', '$', '`'))
+            if(_lexingState == LexingState.INCLUDE_FOUND
+                    || !first.isPunctuation || first.among('@', '$', '`')
+                    || first == '.' && _input.save.dropOne.startsWith!isDigit)
                 return Nullable!PpcToken();
 
             auto loc = TokenLocation(_input.filename, _input.line, _input.col, _input.pos, 0);
@@ -323,13 +328,13 @@ auto ppcTokenize(Range)(Range input, IErrorHandler errorHandler)
 
         private void computeNext()
         {
-            // Priority: HeaderName>Operator, HeaderName>Literals, Literals>Identifiers, Number>Operators
-            if(!(_result = tryParseHeaderName()).isNull) {}
-            else if(!(_result = tryParseLiteral()).isNull) {}
+            // Priority: Number>Operators
+            if(!(_result = tryParseSpacing()).isNull) {}
             else if(!(_result = tryParseIdentifier()).isNull) {}
-            else if(!(_result = tryParseSpacing()).isNull) {}
-            else if(!(_result = tryParseNumber()).isNull) {}
             else if(!(_result = tryParseOperator()).isNull) {}
+            else if(!(_result = tryParseNumber()).isNull) {}
+            else if(!(_result = tryParseLiteral()).isNull) {}
+            else if(!(_result = tryParseHeaderName()).isNull) {}
             else
             {
                 auto loc = TokenLocation(_input.filename, _input.line, _input.col, _input.pos, 0);

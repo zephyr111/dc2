@@ -248,15 +248,16 @@ void macroSubstitution(Range)(ref Range input, MacroDb macros, IErrorHandler err
                     auto param = appender!(PpcToken[]);
                     int level = 0;
 
-                    input.forwardWhile!((a) {
-                        if(a.type == COMMA && level == 0)
-                            return false; // 1 param
-                        else if(a.type == LPAREN)
+                    foreach(e ; input)
+                    {
+                        if(e.type == COMMA && level == 0
+                                || e.type == RPAREN && level-- <= 0)
+                            break;
+                        else if(e.type == LPAREN)
                             level++;
-                        else if(a.type == RPAREN && level-- <= 0)
-                            return false; // end
-                        return true;
-                    })(param);
+
+                        param.put(e);
+                    }
 
                     if(input.empty)
                         epicFailure("unterminated macro", startLoc);
