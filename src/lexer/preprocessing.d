@@ -45,6 +45,7 @@ private template Preprocess(InputRange)
             bool evaluated;
         };
 
+        alias This = typeof(this);
         alias WorkingRange = MacroRange!(LookAheadRange!InputRange);
         pragma(msg, "[WTF] using BufferedStack!Result cause the LDC compiler to crash...");
         alias IncludeRange = Result[];
@@ -590,15 +591,15 @@ private template Preprocess(InputRange)
 
         // Note: included range should not be directly copied
         pragma(msg, "[FIXME] implement a resource manager to load files once while enabling look-ahead");
-        @property typeof(this) save()
+        @property This save()
         {
-            typeof(this) result = this;
+            This result = this;
             result._workingRange = _workingRange.save;
 
             if(!_isIncluded)
                 result._macros = result._macros.dup;
 
-            result._includeRange = new typeof(this)[_includeRange.length];
+            result._includeRange = new This[_includeRange.length];
 
             foreach(ref r ; result._includeRange)
             {

@@ -11,6 +11,8 @@ auto trackLocation(Range)(Range input, string filename)
 {
     static struct Result
     {
+        alias This = typeof(this);
+
         private Range _input;
         private string _filename;
         private uint _line = 1;
@@ -49,15 +51,15 @@ auto trackLocation(Range)(Range input, string filename)
 
         @property auto save()
         {
-            typeof(this) result = this;
+            This result = this;
             result._input = _input.save;
             return result;
         }
 
-        @property auto filename() { return _filename; }
-        @property auto line() { return _line; }
-        @property auto col() { return _col; }
-        @property auto pos() { return _pos; }
+        @property auto filename() const { return _filename; }
+        @property auto line() const { return _line; }
+        @property auto col() const { return _col; }
+        @property auto pos() const { return _pos; }
     }
 
     return Result(input, filename);

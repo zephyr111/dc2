@@ -15,6 +15,8 @@ auto substituteTrigraph(Range)(Range input)
 {
     static struct Result
     {
+        alias This = typeof(this);
+
         private Range _input;
 
         this(Range input)
@@ -63,13 +65,13 @@ auto substituteTrigraph(Range)(Range input)
 
         @property auto save()
         {
-            return typeof(this)(_input.save);
+            return This(_input.save);
         }
 
-        @property auto filename() { return _input.filename; }
-        @property auto line() { return _input.line; }
-        @property auto col() { return _input.col; }
-        @property auto pos() { return _input.pos; }
+        @property auto filename() const { return _input.filename; }
+        @property auto line() const { return _input.line; }
+        @property auto col() const { return _input.col; }
+        @property auto pos() const { return _input.pos; }
     }
 
     return Result(input);

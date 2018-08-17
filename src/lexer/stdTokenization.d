@@ -17,10 +17,12 @@ import utils;
 // May consume more char than requested
 // Perform a look-ahead parsing
 auto stdTokenize(Range)(Range input, IErrorHandler errorHandler)
-    if(isForwardRange!Range && is(ElementType!Range : PpcToken))
+    if(isInputRange!Range && is(ElementType!Range : PpcToken))
 {
     static struct Result
     {
+        alias This = typeof(this);
+
         static private StdTokenType[string] keywords;
 
         private LookAheadRange!Range _input;
@@ -240,15 +242,10 @@ auto stdTokenize(Range)(Range input, IErrorHandler errorHandler)
 
         @property auto save()
         {
-            typeof(this) result = this;
+            This result = this;
             result._input = _input.save;
             return result;
         }
-
-        /*@property auto filename() { return _input.filename; }
-        @property auto line() { return _input.line; }
-        @property auto col() { return _input.col; }
-        @property auto pos() { return _input.pos; }*/
     }
 
     return Result(input, errorHandler);

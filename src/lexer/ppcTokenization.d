@@ -28,6 +28,8 @@ auto ppcTokenize(Range)(Range input, IErrorHandler errorHandler)
             INCLUDE_FOUND,
         }
 
+        alias This = typeof(this);
+
         private Range _input;
         private LexingState _lexingState = LexingState.NEWLINE_FOUND;
         private IErrorHandler _errorHandler;
@@ -376,7 +378,7 @@ auto ppcTokenize(Range)(Range input, IErrorHandler errorHandler)
 
         @property auto save()
         {
-            typeof(this) result = this;
+            This result = this;
             result._input = _input.save;
             return result;
         }

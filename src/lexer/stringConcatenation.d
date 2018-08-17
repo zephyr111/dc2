@@ -15,6 +15,8 @@ auto concatStrings(Range)(Range input, IErrorHandler errorHandler)
 {
     static struct Result
     {
+        alias This = typeof(this);
+
         private LookAheadRange!Range _input;
         private IErrorHandler _errorHandler;
 
@@ -97,7 +99,7 @@ auto concatStrings(Range)(Range input, IErrorHandler errorHandler)
 
         @property auto save()
         {
-            typeof(this) result = this;
+            This result = this;
             result._input = _input.save;
             return result;
         }
