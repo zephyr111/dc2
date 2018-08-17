@@ -58,11 +58,13 @@ private template Preprocess(InputRange)
         private bool _isIncluded;
         private bool _lineStart = true;
         private SList!ConditionalState _conditionalStates;
+        private const int _nestingLevel;
 
-        this(InputRange input, IErrorHandler errorHandler, MacroDb parentMacros)
+        this(InputRange input, IErrorHandler errorHandler, MacroDb parentMacros, int nestingLevel)
         {
             _workingRange = WorkingRange(lookAhead(input));
             _errorHandler = errorHandler;
+            _nestingLevel = nestingLevel;
 
             _isIncluded = parentMacros !is null;
             if(_isIncluded)
@@ -158,11 +160,15 @@ private template Preprocess(InputRange)
                 catch(UTFException)
                     return directiveFailure(format!"unable to decode the file `%s` using UTF-8"(filename), currLoc(loc));
 
+                // Avoid runaway recursion
+                if(_nestingLevel >= 200)
+                    return directiveFailure("#include nested too deeply", currLoc(loc));
+
                 auto range = dstr.trackLocation(filename)
                                     .substituteTrigraph
                                     .spliceLines
                                     .ppcTokenize(_errorHandler)
-                                    .preprocess(_errorHandler, _macros);
+                                    .preprocess(_errorHandler, _macros, _nestingLevel+1);
 
                 if(!range.empty)
                     _includeRange ~= range;
@@ -614,10 +620,10 @@ private template Preprocess(InputRange)
 
     // May consume more char than requested
     // Perform a look-ahead parsing
-    auto preprocess(InputRange)(InputRange input, IErrorHandler errorHandler, MacroDb parentMacros = null)
+    auto preprocess(InputRange)(InputRange input, IErrorHandler errorHandler, MacroDb parentMacros, int nestingLevel = 0)
         if(isInputRange!InputRange && is(ElementType!InputRange : PpcToken))
     {
-        return Result(input, errorHandler, parentMacros);
+        return Result(input, errorHandler, parentMacros, nestingLevel);
     };
 }
 
@@ -626,6 +632,6 @@ private template Preprocess(InputRange)
 auto preprocess(InputRange)(InputRange input, IErrorHandler errorHandler, MacroDb parentMacros = null)
     if(isInputRange!InputRange && is(ElementType!InputRange : PpcToken))
 {
-    return Preprocess!InputRange.Result(input, errorHandler, parentMacros);
+    return Preprocess!InputRange.Result(input, errorHandler, parentMacros, 0);
 };
 
