@@ -294,7 +294,7 @@ auto escapeChar(dchar c)
 auto escape(Range)(Range inputRange)
     if(isInputRange!Range && isSomeChar!(ElementEncodingType!Range) && !isConvertibleToString!Range)
 {
-    return inputRange.map!escapeChar.join;
+    return inputRange.byChar.map!escapeChar.join;
 }
 
 // InputRange/OutputRange that behave like a bufferized stack
