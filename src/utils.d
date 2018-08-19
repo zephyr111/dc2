@@ -528,6 +528,7 @@ private struct LookAhead(Range)
     @property auto front()
     {
         assert(_local !is null && _shared !is null);
+        assert(!empty);
 
         if(!_local.data.empty)
             return _local.data.front;
@@ -538,6 +539,7 @@ private struct LookAhead(Range)
     void popFront()
     {
         assert(_local !is null && _shared !is null);
+        assert(!empty);
 
         if(!_local.data.empty)
             return _local.data.popFront();

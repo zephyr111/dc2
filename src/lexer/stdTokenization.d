@@ -216,7 +216,7 @@ auto stdTokenize(Range)(Range input, IErrorHandler errorHandler)
                     _errorHandler.error(msg, first.location.filename,
                                         first.location.line, first.location.col);
                     _input.walkLength;
-                    break;
+                    return;
             }
 
             _input.popFront();
