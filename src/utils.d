@@ -310,11 +310,13 @@ struct BufferedStack(Range, RangeState = void)
 
     @property bool empty()
     {
+        assert(_data.empty || !_data.front.empty);
         return _data.empty;
     }
 
     @property auto front()
     {
+        assert(!_data.empty && !_data.front.empty);
         static if(is(RangeState : void))
             return _data.front.front;
         else
@@ -325,12 +327,14 @@ struct BufferedStack(Range, RangeState = void)
     {
         @property auto state()
         {
+            assert(!_data.empty);
             return _data.front[1];
         }
     }
 
     void popFront()
     {
+        assert(!empty);
         static if(is(RangeState : void))
         {
             _data.front.popFront();

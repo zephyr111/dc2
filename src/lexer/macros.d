@@ -68,6 +68,7 @@ struct Macro
     bool withArgs;
     string[] args;
     PpcToken[] content;
+    bool withPrescan;
 
     bool opEquals()(auto ref const Macro m) const
     {
@@ -213,6 +214,8 @@ void macroSubstitution(Range)(ref Range input, MacroDb macros, IErrorHandler err
 
             auto currState = !input._prefixRange.empty ? input._prefixRange.state : [];
 
+            // Simple predefined macro without parameters
+            // Supposed to not be recursive
             if(m.predefined)
             {
                 input.popFront();
@@ -220,11 +223,14 @@ void macroSubstitution(Range)(ref Range input, MacroDb macros, IErrorHandler err
                 break;
             }
 
+            // Check for recursive substitution
             if(currState.retro.canFind(m.name))
                 break;
 
+            // Track the name of the macro for later recursive substitutions
             currState ~= m.name;
 
+            // Parametric macro case
             if(m.withArgs)
             {
                 auto lookAhead = input.save;
@@ -240,35 +246,88 @@ void macroSubstitution(Range)(ref Range input, MacroDb macros, IErrorHandler err
 
                 pragma(msg, "[OPTIM] avoid allocations");
 
-                static auto params = appender!(PpcToken[][]);
-                params.clear();
+                auto params = appender!(PpcToken[][]);
+                auto stateGroups = appender!(string[][][]);
 
                 // Argument parsing
                 do
                 {
-                    auto param = appender!(PpcToken[]);
+                    auto tokenAcc = appender!(PpcToken[]);
+                    auto stateAcc = appender!(string[][]);
                     int level = 0;
 
-                    foreach(e ; input)
+                    while(!input.empty)
                     {
+                        auto e = input.front;
+
                         if(e.type == COMMA && level == 0
                                 || e.type == RPAREN && level-- <= 0)
                             break;
                         else if(e.type == LPAREN)
                             level++;
 
-                        param.put(e);
+                        if(m.withPrescan)
+                        {
+                            if(!input._prefixRange.empty)
+                                stateAcc.put(input._prefixRange.state);
+                            else
+                                stateAcc.put(cast(string[])[]);
+                        }
+
+                        tokenAcc.put(e);
+                        input.popFront();
                     }
 
                     if(input.empty)
-                        epicFailure("unterminated macro", startLoc);
+                        return epicFailure("unterminated macro", startLoc);
 
-                    params.put(param.data);
+                    if(m.withPrescan)
+                        stateGroups.put(stateAcc.data);
+                    params.put(tokenAcc.data);
                 }
                 while(input.skipIf!(a => a.type == COMMA));
 
                 if(!input.skipIf!(a => a.type == RPAREN))
                     return epicFailure("internal error", startLoc);
+
+                // First scan: recursive substitution of arguments
+                // Note: prescan is not done when an argument is stringified/concatenated
+                if(m.withPrescan)
+                {
+                    foreach(i ; 0..params.data.length)
+                    {
+                        auto tokenAcc = appender!(PpcToken[]);
+                        auto stateAcc = appender!(string[][]);
+
+                        auto param = params.data[i];
+                        auto states = stateGroups.data[i];
+                        auto subInput = MacroRange!(PpcToken[])();
+
+                        foreach_reverse(j ; 0..param.length)
+                            subInput._prefixRange.put(tuple([param[j]], states[j]));
+
+                        while(true)
+                        {
+                            macroSubstitution(subInput, macros, errorHandler);
+
+                            if(subInput.empty)
+                                break;
+
+                            tokenAcc.put(subInput.front);
+                            if(!subInput._prefixRange.empty)
+                                stateAcc.put(subInput._prefixRange.state);
+                            else
+                                stateAcc.put(currState[0..max($-1,0)]);
+                            subInput.popFront();
+                        }
+
+                        assert(tokenAcc.data.length == stateAcc.data.length);
+                        params.data[i] = tokenAcc.data;
+                        stateGroups.data[i] = stateAcc.data;
+                    }
+
+                    assert(params.data.length == stateGroups.data.length);
+                }
 
                 // Macro argument matching & substitution
                 if(m.args.empty && params.data == [[]])
@@ -280,6 +339,7 @@ void macroSubstitution(Range)(ref Range input, MacroDb macros, IErrorHandler err
                 else
                 {
                     auto newTokens = appender!(PpcToken[]);
+                    auto newStates = appender!(string[][]);
 
                     foreach(PpcToken mToken ; m.content)
                     {
@@ -295,17 +355,33 @@ void macroSubstitution(Range)(ref Range input, MacroDb macros, IErrorHandler err
                                     pos = i;
 
                             if(pos >= 0)
+                            {
+                                if(m.withPrescan)
+                                    newStates.put(stateGroups.data[pos]);
                                 newTokens.put(params.data[pos]);
+                            }
                             else
+                            {
+                                if(m.withPrescan)
+                                    newStates.put(currState);
                                 newTokens.put(mToken);
+                            }
                         }
                         else
                         {
+                            if(m.withPrescan)
+                                newStates.put(currState);
                             newTokens.put(mToken);
                         }
                     }
 
-                    input._prefixRange.put(tuple(newTokens.data, currState));
+                    assert(!m.withPrescan || newTokens.data.length == newStates.data.length);
+
+                    if(m.withPrescan)
+                        foreach_reverse(i ; 0..newTokens.data.length)
+                            input._prefixRange.put(tuple([newTokens.data[i]], newStates.data[i]));
+                    else
+                        input._prefixRange.put(tuple(newTokens.data, currState));
                 }
             }
             else

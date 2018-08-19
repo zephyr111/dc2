@@ -218,9 +218,15 @@ private template Preprocess(InputRange)
                 _workingRange.forwardWhile!(a => a.type != NEWLINE)(acc);
                 m.content = acc.data.stripRight!(a => a.type == SPACING);
 
-                auto withSharp = m.content.find!(a => a.type == SHARP);
-                if(!withSharp.empty)
-                    error("`#` and `##` not yet supported", withSharp.front.location);
+                auto stringifierBeg = m.content.find!(a => a.type == SHARP);
+                auto concatBeg = m.content.find!(a => a.type == TOKEN_CONCAT);
+                m.withPrescan = stringifierBeg.empty && concatBeg.empty;
+
+                if(!stringifierBeg.empty)
+                    error("`#` not yet supported", stringifierBeg.front.location);
+
+                if(!concatBeg.empty)
+                    error("`##` not yet supported", concatBeg.front.location);
 
                 auto mOld = _macros.get(m.name, loc);
 
