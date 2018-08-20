@@ -217,16 +217,91 @@ private template Preprocess(InputRange)
                 _workingRange.findSkip!(a => a.type == SPACING);
                 _workingRange.forwardWhile!(a => a.type != NEWLINE)(acc);
                 m.content = acc.data.stripRight!(a => a.type == SPACING);
+                m.withPrescan = m.withArgs;
 
-                auto stringifierBeg = m.content.find!(a => a.type == SHARP);
-                auto concatBeg = m.content.find!(a => a.type == TOKEN_CONCAT);
-                m.withPrescan = stringifierBeg.empty && concatBeg.empty;
+                if(m.withArgs)
+                {
+                    // Parameter indexing (in-place substitution)
+                    foreach(ref token ; m.content)
+                    {
+                        if(token.type == IDENTIFIER)
+                        {
+                            auto pos = m.args.countUntil(idTokenValue(token));
 
-                if(!stringifierBeg.empty)
-                    error("`#` not yet supported", stringifierBeg.front.location);
+                            if(pos >= 0)
+                            {
+                                auto value = PpcTokenValue(PpcParamTokenValue(cast(int)pos, false));
+                                token = PpcToken(MACRO_PARAM, token.location, value);
+                            }
+                        }
+                    }
 
-                if(!concatBeg.empty)
-                    error("`##` not yet supported", concatBeg.front.location);
+                    // Stringify operator precomputation (in-place substitution)
+                    int j = 0;
+                    for(int i=0 ; i<m.content.length ; ++i)
+                    {
+                        PpcToken token = m.content[i];
+
+                        if(token.type == SHARP)
+                        {
+                            auto nextPos = m.content[i+1..$].countUntil!(a => a.type != SPACING)+1;
+                            assert(nextPos >= 0);
+                            i += nextPos;
+                            token = m.content[i];
+                            m.withPrescan = false;
+
+                            if(nextPos == 0)
+                                error("missing identifier after `#`", token.location);
+                            else if(token.type != MACRO_PARAM)
+                                error("`#` is not followed by a macro parameter", token.location);
+                            else
+                                token.value.peek!PpcParamTokenValue.toStringify = true;
+                        }
+
+                        assert(j <= i);
+                        m.content[j++] = token;
+                    }
+                    m.content.length = j;
+                }
+
+                // Concatenation operator precomputation (in-place substitution)
+                int j = 0;
+                for(int i=0 ; i<m.content.length ; ++i)
+                {
+                    PpcToken token = m.content[i];
+
+                    if(token.type == TOKEN_CONCAT)
+                    {
+                        static ref auto valueOf(ref PpcToken a)
+                        {
+                            assert(a.value.peek!PpcConcatTokenValue !is null);
+                            return a.value.peek!PpcConcatTokenValue;
+                        }
+
+                        auto nextPos = m.content[i+1..$].countUntil!(a => a.type != SPACING)+1;
+                        auto lastPos = m.content[0..j].retro.countUntil!(a => a.type != SPACING)+1;
+                        assert(nextPos >= 0 && lastPos >= 0 && lastPos <= j);
+                        i += nextPos;
+                        j -= lastPos;
+                        auto left = m.content[j];
+                        auto right = m.content[i];
+                        valueOf(token).isInMacro = true;
+                        m.withPrescan = false;
+
+                        if(lastPos == 0)
+                            error("missing token before `##`", left.location);
+                        else if(nextPos == 0)
+                            error("missing token after `##`", right.location);
+                        else if(left.type != TOKEN_CONCAT)
+                            valueOf(token).children = [left, right];
+                        else // chaining of ## (recursive case)
+                            valueOf(token).children = valueOf(left).children ~ right;
+                    }
+
+                    assert(j <= i);
+                    m.content[j++] = token;
+                }
+                m.content.length = j;
 
                 auto mOld = _macros.get(m.name, loc);
 

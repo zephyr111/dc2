@@ -85,7 +85,7 @@ auto s = MonoTime.currTime;
                                 .concatStrings(_errorHandler)
                                 .stdTokenize(_errorHandler))
         {
-            //acc.put(token.toString);
+            //acc.put(token.toString!false);
             tokenCount++;
             //writeln("token: ", token);
         }

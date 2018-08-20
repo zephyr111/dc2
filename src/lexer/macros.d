@@ -3,6 +3,7 @@ import std.range;
 import std.range.primitives;
 import std.algorithm.comparison;
 import std.algorithm.searching;
+import std.algorithm.iteration;
 import std.typecons;
 import std.conv;
 import std.datetime;
@@ -196,6 +197,16 @@ void macroSubstitution(Range)(ref Range input, MacroDb macros, IErrorHandler err
         input.walkLength;
     }
 
+    auto idTokenValue(PpcToken token)
+    {
+        return token.value.get!PpcIdentifierTokenValue.name;
+    }
+
+    auto numberTokenValue(PpcToken token)
+    {
+        return token.value.get!PpcNumberTokenValue.content;
+    }
+
     with(PpcTokenType)
     {
         while(!input.empty)
@@ -281,9 +292,15 @@ void macroSubstitution(Range)(ref Range input, MacroDb macros, IErrorHandler err
                     if(input.empty)
                         return epicFailure("unterminated macro", startLoc);
 
+                    // Strip space on both sides
+                    auto left = tokenAcc.data.countUntil!(a => a.type != SPACING);
+                    auto right = tokenAcc.data.retro.countUntil!(a => a.type != SPACING);
+                    left = max(left, 0);
+                    right = max(right, 0);
+
                     if(m.withPrescan)
-                        stateGroups.put(stateAcc.data);
-                    params.put(tokenAcc.data);
+                        stateGroups.put(stateAcc.data[left..$-right]);
+                    params.put(tokenAcc.data[left..$-right]);
                 }
                 while(input.skipIf!(a => a.type == COMMA));
 
@@ -341,37 +358,163 @@ void macroSubstitution(Range)(ref Range input, MacroDb macros, IErrorHandler err
                     auto newTokens = appender!(PpcToken[]);
                     auto newStates = appender!(string[][]);
 
-                    foreach(PpcToken mToken ; m.content)
+                    foreach(mToken ; m.content)
                     {
-                        pragma(msg, "[OPTIM] precomputation with a PARAM token type (with tokenValue = param pos)");
-
-                        if(mToken.type == IDENTIFIER)
+                        auto stringify(PpcToken[] tokens)
                         {
-                            auto param = mToken.value.get!PpcIdentifierTokenValue.name;
-                            long pos = -1;
+                            auto stringified = tokens.map!((a) => a.toString!false).join;
+                            auto value = PpcTokenValue(PpcStringTokenValue(false, stringified));
+                            return PpcToken(STRING, token.location, value);
+                        }
 
-                            foreach(ulong i ; 0..m.args.length)
-                                if(param == m.args[i])
-                                    pos = i;
+                        auto handleToken(PpcToken token, 
+                                                ref Appender!(PpcToken[]) tokenAcc, 
+                                                ref Appender!(string[][]) stateAcc)
+                        {
+                            assert(token.type != TOKEN_CONCAT
+                                    || !token.value.get!PpcConcatTokenValue.isInMacro);
 
-                            if(pos >= 0)
+                            if(token.type == MACRO_PARAM)
                             {
-                                if(m.withPrescan)
-                                    newStates.put(stateGroups.data[pos]);
-                                newTokens.put(params.data[pos]);
+                                auto pos = token.value.get!PpcParamTokenValue.id;
+
+                                if(token.value.get!PpcParamTokenValue.toStringify)
+                                {
+                                    if(m.withPrescan)
+                                        stateAcc.put(currState);
+                                    tokenAcc.put(stringify(params.data[pos]));
+                                }
+                                else
+                                {
+                                    if(m.withPrescan)
+                                        stateAcc.put(stateGroups.data[pos]);
+                                    tokenAcc.put(params.data[pos]);
+                                }
                             }
                             else
                             {
                                 if(m.withPrescan)
-                                    newStates.put(currState);
-                                newTokens.put(mToken);
+                                    stateAcc.put(currState);
+                                tokenAcc.put(token);
                             }
+                        }
+
+                        void mergeTokens(ref Appender!(PpcToken[]) leftTokensAcc, 
+                                            ref Appender!(string[][]) leftStatesAcc, 
+                                            ref Appender!(PpcToken[]) rightTokensAcc, 
+                                            ref Appender!(string[][]) rightStatesAcc)
+                        {
+                            auto leftTokens = leftTokensAcc.data;
+                            auto leftStates = leftStatesAcc.data;
+                            auto rightTokens = rightTokensAcc.data;
+                            auto rightStates = rightStatesAcc.data;
+                            assert(!m.withPrescan || leftTokens.length == leftStates.length);
+                            assert(!m.withPrescan || rightTokens.length == rightStates.length);
+
+                            if(rightTokens.empty)
+                                return;
+
+                            if(leftTokens.empty)
+                            {
+                                if(m.withPrescan)
+                                    leftStatesAcc.put(rightStates);
+                                leftTokensAcc.put(rightTokens);
+                                return;
+                            }
+
+                            auto left = leftTokens[$-1];
+                            auto right = rightTokens[0];
+
+                            if(!left.type.among(IDENTIFIER, NUMBER)
+                                    || !right.type.among(IDENTIFIER, NUMBER, STRING))
+                                return error("tokens cannot be merged", left.location);
+
+                            if((left.type != IDENTIFIER || idTokenValue(left) != "L")
+                                    && right.type.among(CHARACTER, STRING))
+                                return error("tokens cannot be merged", left.location);
+
+                            PpcToken res;
+                            PpcTokenValue value;
+
+                            if(right.type.among(CHARACTER, STRING))
+                            {
+                                if(right.type == CHARACTER)
+                                {
+                                    auto oldValue = right.value.get!PpcCharTokenValue;
+                                    if(oldValue.isWide)
+                                        return error("tokens cannot be merged", left.location);
+                                    value = PpcTokenValue(PpcCharTokenValue(true, oldValue.content));
+                                }
+                                else
+                                {
+                                    auto oldValue = right.value.get!PpcStringTokenValue;
+                                    if(oldValue.isWide)
+                                        return error("tokens cannot be merged", left.location);
+                                    value = PpcTokenValue(PpcStringTokenValue(true, oldValue.content));
+                                }
+
+                                res = PpcToken(right.type, left.location, value);
+                            }
+                            else
+                            {
+                                string content;
+
+                                if(left.type == IDENTIFIER)
+                                    content = idTokenValue(left);
+                                else
+                                    content = numberTokenValue(left);
+
+                                if(right.type == IDENTIFIER)
+                                    content ~= idTokenValue(right);
+                                else
+                                    content ~= numberTokenValue(right);
+
+                                if(left.type == IDENTIFIER)
+                                    value = PpcTokenValue(PpcIdentifierTokenValue(content));
+                                else
+                                    value = PpcTokenValue(PpcNumberTokenValue(content));
+
+                                res = PpcToken(left.type, left.location, value);
+                            }
+
+                            leftTokens[$-1] = res;
+                            if(m.withPrescan)
+                                leftStates[$-1] = []; // Ok ?
+
+                            leftTokensAcc.put(rightTokens[1..$]);
+                            if(m.withPrescan)
+                                leftStatesAcc.put(rightStates[1..$]);
+                        }
+
+                        if(mToken.type == TOKEN_CONCAT
+                            && mToken.value.get!PpcConcatTokenValue.isInMacro)
+                        {
+                            auto tokenValue = mToken.value.get!PpcConcatTokenValue;
+                            assert(tokenValue.children.length >= 2);
+                            auto left = tokenValue.children[0];
+                            auto newLeftTokens = appender!(PpcToken[]);
+                            auto newLeftStates = appender!(string[][]);
+                            auto newRightTokens = appender!(PpcToken[]);
+                            auto newRightStates = appender!(string[][]);
+
+                            handleToken(left, newLeftTokens, newLeftStates);
+
+                            foreach(right ; tokenValue.children[1..$])
+                            {
+                                newRightTokens.clear();
+                                newRightStates.clear();
+                                handleToken(right, newRightTokens, newRightStates);
+                                mergeTokens(newLeftTokens, newLeftStates, 
+                                            newRightTokens, newRightStates);
+                            }
+
+                            if(m.withPrescan)
+                                newStates.put(newLeftStates.data);
+                            newTokens.put(newLeftTokens.data);
                         }
                         else
                         {
-                            if(m.withPrescan)
-                                newStates.put(currState);
-                            newTokens.put(mToken);
+                            handleToken(mToken, newTokens, newStates);
                         }
                     }
 

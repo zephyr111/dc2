@@ -35,7 +35,7 @@ auto ppcTokenize(Range)(Range input, IErrorHandler errorHandler)
         private IErrorHandler _errorHandler;
         private Nullable!PpcToken _result;
 
-        static private immutable string[] operatorLexems = [
+        private enum operatorLexems = [
             "(", ")", "{", "}", "[", "]", ",", ";", ":", "?", "~", "+",
             "-", "*", "/", "%", "=", "<", ">", "!", "&", "|", "^", ".",
             "++", "--", "<<", ">>", "&&", "||", "<=", ">=", "==", "!=", "+=", 
@@ -43,7 +43,7 @@ auto ppcTokenize(Range)(Range input, IErrorHandler errorHandler)
             "#", "##", "<:", ":>", "<%", "%>", "%:", "%:%:",
         ];
 
-        static private immutable PpcTokenType[] operatorTokenTypes = [
+        private enum operatorTokenTypes = [
             PpcTokenType.LPAREN, PpcTokenType.RPAREN, PpcTokenType.LCURL,
             PpcTokenType.RCURL, PpcTokenType.LBRACK, PpcTokenType.RBRACK,
             PpcTokenType.COMMA, PpcTokenType.SEMICOLON, PpcTokenType.COL,
@@ -63,10 +63,7 @@ auto ppcTokenize(Range)(Range input, IErrorHandler errorHandler)
             PpcTokenType.LCURL, PpcTokenType.RCURL, PpcTokenType.SHARP, PpcTokenType.TOKEN_CONCAT,
         ];
 
-        static this()
-        {
-            assert(operatorLexems.length == operatorTokenTypes.length);
-        }
+        static assert(operatorLexems.length == operatorTokenTypes.length);
 
         this(Range input, IErrorHandler errorHandler)
         {
@@ -286,15 +283,18 @@ auto ppcTokenize(Range)(Range input, IErrorHandler errorHandler)
 
             auto loc = TokenLocation(_input.filename, _input.line, _input.col, _input.pos, 0);
 
-            enum tmp = operatorLexems;
-            auto id = _input.startsWithAmong!tmp;
+            auto id = _input.startsWithAmong!operatorLexems;
             if(id < 0)
                 return Nullable!PpcToken();
 
             _input.popFrontExactly(operatorLexems[id].length);
 
             loc.length = _input.pos - loc.pos;
-            return PpcToken(operatorTokenTypes[id], loc).nullable;
+            enum concatId = operatorTokenTypes.countUntil!(a => a == PpcTokenType.TOKEN_CONCAT);
+            if(id != concatId)
+                return PpcToken(operatorTokenTypes[id], loc).nullable;
+            auto value = PpcTokenValue(PpcConcatTokenValue([], false));
+            return PpcToken(PpcTokenType.TOKEN_CONCAT, loc, value).nullable;
         }
 
         private auto tryParseHeaderName()

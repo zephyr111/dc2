@@ -1,5 +1,6 @@
 import std.range;
 import std.range.primitives;
+import std.algorithm.comparison;
 import std.algorithm.iteration;
 import std.algorithm.searching;
 import std.algorithm.sorting;
@@ -268,8 +269,19 @@ long startsWithAmong(alias elemsToFind, Range)(Range inputRange)
     return -1;
 }
 
+enum EscapeType
+{
+    ALL,
+    ONLY_SQUOTES, // only simple-quoted strings, eg. 'char'
+    ONLY_DQUOTES, // only double-quoted strings, eg. "string"
+    ONLY_BQUOTES, // only back-quoted strings, eg. `printed expressions`
+    REPR_SQUOTES, // same as ONLY_SQUOTES + ONLY_BQUOTES
+    REPR_DQUOTES, // same as ONLY_DQUOTES + ONLY_BQUOTES
+    REPR_BQUOTES, // same as ONLY_BQUOTES + ONLY_BQUOTES
+}
+
 // Return a pretty printable range/string of a given character
-auto escapeChar(dchar c)
+auto escapeChar(EscapeType esc = EscapeType.ALL)(dchar c)
 {
     static immutable ctrlChars = [
           "\\0", "\\x01", "\\x02", "\\x03", "\\x04", "\\x05", "\\x06",   "\\a",
@@ -280,21 +292,33 @@ auto escapeChar(dchar c)
 
     static immutable stdChars = " !\"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~";
 
-    if(c < 0x20) return ctrlChars[c];
-    else if(c == '\'') return "\\'";
-    else if(c == '"') return "\\\"";
-    else if(c == '`') return "\\`";
-    else if(c == 0x7F) return "\\x7F";
-    else if(c.isASCII) return stdChars[c-32..c-32+1];
-    else return "\\u" ~ to!string(cast(int)c, 16).rightJustify(8, '0');
+    with(EscapeType)
+    {
+        if(c < 0x20)
+            return ctrlChars[c];
+        else if(c == '\\')
+            return "\\\\";
+        else if(c == '\'' && esc.among(ALL, ONLY_SQUOTES, REPR_SQUOTES))
+            return "\\'";
+        else if(c == '"' && esc.among(ALL, ONLY_DQUOTES, REPR_DQUOTES))
+            return "\\\"";
+        else if(c == '`' && esc.among(ALL, ONLY_BQUOTES, REPR_BQUOTES))
+            return "\\`";
+        else if(c == 0x7F)
+            return "\\x7F";
+        else if(c.isASCII)
+            return stdChars[c-32..c-32+1];
+        else
+            return "\\u" ~ to!string(cast(int)c, 16).rightJustify(8, '0');
+    }
 }
 
 // Escape special characters (control chars, tabs, new lines, etc.)
 // isSomeString!Range ?
-auto escape(Range)(Range inputRange)
+auto escape(EscapeType esc = EscapeType.ALL, Range)(Range inputRange)
     if(isInputRange!Range && isSomeChar!(ElementEncodingType!Range) && !isConvertibleToString!Range)
 {
-    return inputRange.byChar.map!escapeChar.join;
+    return inputRange.byChar.map!(escapeChar!esc).join;
 }
 
 // InputRange/OutputRange that behave like a bufferized stack

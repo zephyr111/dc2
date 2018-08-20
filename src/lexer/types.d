@@ -2,6 +2,7 @@ import std.variant;
 import std.conv;
 import std.traits;
 import std.algorithm.comparison;
+import std.format;
 import core.exception;
 import interfaces;
 import utils;
@@ -47,9 +48,22 @@ struct PpcHeaderTokenValue
     string name;
 }
 
+struct PpcParamTokenValue
+{
+    int id;
+    bool toStringify;
+}
+
+struct PpcConcatTokenValue
+{
+    PpcToken[] children;
+    bool isInMacro;
+}
+
 alias PpcTokenValue = Algebraic!(PpcIdentifierTokenValue, PpcNumberTokenValue,
                                     PpcCharTokenValue, PpcStringTokenValue,
-                                    PpcHeaderTokenValue, void);
+                                    PpcHeaderTokenValue, void,
+                                    PpcParamTokenValue, PpcConcatTokenValue);
 
 enum PpcTokenType
 {
@@ -81,7 +95,7 @@ enum PpcTokenType
     EOF,
 
     // In-macro tokens
-    HEADER_NAME, SHARP, TOKEN_CONCAT,
+    HEADER_NAME, SHARP, TOKEN_CONCAT, MACRO_PARAM,
 }
 
 struct PpcToken
@@ -90,7 +104,10 @@ struct PpcToken
     TokenLocation location;
     PpcTokenValue value;
 
-    string toString()
+    // Transform a token to a string
+    // Set pretty to false for direct printing and token stringification
+    // Set pretty to true for reporting tokens to the user (enclosed by back-quotes)
+    string toString(bool pretty = true)()
     {
         static immutable string[] operatorLexems = [
             "(", ")", "{", "}", "[", "]", ",", "...", ";", ":",
@@ -104,14 +121,22 @@ struct PpcToken
         {
             switch(type)
             {
-                case IDENTIFIER: return value.get!PpcIdentifierTokenValue.name;
-                case NUMBER: return value.get!PpcNumberTokenValue.content;
+                case IDENTIFIER:
+                    return value.get!PpcIdentifierTokenValue.name;
+                case MACRO_PARAM:
+                    return format!"[MACRO_PARAM_%s]"(value.get!PpcParamTokenValue.id);
+                case NUMBER:
+                    return value.get!PpcNumberTokenValue.content;
                 case CHARACTER:
                     auto actualValue = value.get!PpcCharTokenValue;
-                    return text(actualValue.isWide ? "L'" : "'", actualValue.content.escapeChar, "'");
+                    enum finalEscapeType = pretty ? EscapeType.REPR_SQUOTES : EscapeType.ONLY_SQUOTES;
+                    auto finalContent = actualValue.content.escapeChar!finalEscapeType;
+                    return text(actualValue.isWide ? "L'" : "'", finalContent, "'");
                 case STRING:
                     auto actualValue = value.get!PpcStringTokenValue;
-                    return text(actualValue.isWide ? "L\"" : "\"", actualValue.content.escape, "\"");
+                    enum finalEscapeType = pretty ? EscapeType.REPR_DQUOTES : EscapeType.ONLY_DQUOTES;
+                    auto finalContent = actualValue.content.escape!finalEscapeType;
+                    return text(actualValue.isWide ? "L\"" : "\"", finalContent, "\"");
                 case LPAREN: .. case XOR_ASSIGN:
                     enum ppcStart = LPAREN.asOriginalType;
                     enum ppcEnd = XOR_ASSIGN.asOriginalType;
