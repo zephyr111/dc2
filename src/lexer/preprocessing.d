@@ -207,7 +207,7 @@ private template Preprocess(InputRange)
                     if(!noSpaceInput.skipIf!(a => a.type == RPAREN))
                         return directiveFailure("expecting `,` or `)`", currLoc(loc));
 
-                    m.args = acc.data;
+                    m.args = acc.data.idup;
 
                     if(!m.args.replicates.empty)
                         error(format!"duplicated macro parameter name `%s`"(m.args.replicates.front), loc);
@@ -216,13 +216,13 @@ private template Preprocess(InputRange)
                 auto acc = appender!(PpcToken[]);
                 _workingRange.findSkip!(a => a.type == SPACING);
                 _workingRange.forwardWhile!(a => a.type != NEWLINE)(acc);
-                m.content = acc.data.stripRight!(a => a.type == SPACING);
+                auto content = acc.data.stripRight!(a => a.type == SPACING);
                 m.withPrescan = m.withArgs;
 
                 if(m.withArgs)
                 {
                     // Parameter indexing (in-place substitution)
-                    foreach(ref token ; m.content)
+                    foreach(ref token ; content)
                     {
                         if(token.type == IDENTIFIER)
                         {
@@ -238,16 +238,16 @@ private template Preprocess(InputRange)
 
                     // Stringify operator precomputation (in-place substitution)
                     int j = 0;
-                    for(int i=0 ; i<m.content.length ; ++i)
+                    for(int i=0 ; i<content.length ; ++i)
                     {
-                        PpcToken token = m.content[i];
+                        PpcToken token = content[i];
 
                         if(token.type == SHARP)
                         {
-                            auto nextPos = m.content[i+1..$].countUntil!(a => a.type != SPACING)+1;
+                            auto nextPos = content[i+1..$].countUntil!(a => a.type != SPACING)+1;
                             assert(nextPos >= 0);
                             i += nextPos;
-                            token = m.content[i];
+                            token = content[i];
                             m.withPrescan = false;
 
                             if(nextPos == 0)
@@ -259,16 +259,16 @@ private template Preprocess(InputRange)
                         }
 
                         assert(j <= i);
-                        m.content[j++] = token;
+                        content[j++] = token;
                     }
-                    m.content.length = j;
+                    content.length = j;
                 }
 
                 // Concatenation operator precomputation (in-place substitution)
                 int j = 0;
-                for(int i=0 ; i<m.content.length ; ++i)
+                for(int i=0 ; i<content.length ; ++i)
                 {
-                    PpcToken token = m.content[i];
+                    PpcToken token = content[i];
 
                     if(token.type == TOKEN_CONCAT)
                     {
@@ -278,13 +278,13 @@ private template Preprocess(InputRange)
                             return a.value.peek!PpcConcatTokenValue;
                         }
 
-                        auto nextPos = m.content[i+1..$].countUntil!(a => a.type != SPACING)+1;
-                        auto lastPos = m.content[0..j].retro.countUntil!(a => a.type != SPACING)+1;
+                        auto nextPos = content[i+1..$].countUntil!(a => a.type != SPACING)+1;
+                        auto lastPos = content[0..j].retro.countUntil!(a => a.type != SPACING)+1;
                         assert(nextPos >= 0 && lastPos >= 0 && lastPos <= j);
                         i += nextPos;
                         j -= lastPos;
-                        auto left = m.content[j];
-                        auto right = m.content[i];
+                        auto left = content[j];
+                        auto right = content[i];
                         valueOf(token).isInMacro = true;
                         m.withPrescan = false;
 
@@ -299,9 +299,11 @@ private template Preprocess(InputRange)
                     }
 
                     assert(j <= i);
-                    m.content[j++] = token;
+                    content[j++] = token;
                 }
-                m.content.length = j;
+                content.length = j;
+
+                m.content = content.idup;
 
                 auto mOld = _macros.get(m.name, loc);
 

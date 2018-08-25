@@ -321,6 +321,107 @@ auto escape(EscapeType esc = EscapeType.ALL, Range)(Range inputRange)
     return inputRange.byChar.map!(escapeChar!esc).join;
 }
 
+// InputRange/OutputRange that behave like a stack
+// Usefull for macro substitution
+struct Stack(T)
+{
+    alias This = typeof(this);
+
+    private T[] _data = [];
+
+    @property bool empty() const pure
+    {
+        return _data.empty;
+    }
+
+    @property auto front()
+    {
+        assert(!empty);
+        return _data[$-1];
+    }
+
+    void popFront()
+    {
+        assert(!empty);
+        _data.length = _data.length-1;
+    }
+
+    void put(T e)
+    {
+        if(_data.capacity == _data.length)
+            _data.reserve(max(_data.length, 4)*2);
+
+        _data ~= e;
+    }
+
+    // Insert many elements one by one
+    void putMany(Range)(Range input)
+        if(isInputRange!Range && is(ElementType!Range : T) && hasLength!Range)
+    {
+        if(_data.capacity < _data.length+input.length)
+        {
+            auto capacity = max(_data.capacity, 4);
+            while(capacity < _data.length+input.length)
+                capacity *= 2;
+            _data.reserve(capacity);
+        }
+
+        auto i = _data.length;
+        _data.length += input.length;
+        foreach(e ; input)
+            _data[i++] = e;
+    }
+
+    // Insert many elements one by one
+    void putMany(Range)(Range input)
+        if(isInputRange!Range && is(ElementType!Range : T) && !hasLength!Range)
+    {
+        foreach(e ; input)
+            put(e);
+    }
+
+    // Insert many elements one by one
+    void putMany(const T[] arr)
+    {
+        if(_data.capacity < _data.length+arr.length)
+        {
+            auto capacity = max(_data.capacity, 4);
+            while(capacity < _data.length+arr.length)
+                capacity *= 2;
+            _data.reserve(capacity);
+        }
+
+        _data ~= arr;
+    }
+
+    // Insert a chunk of elements so they can be 
+    // retrived later in the same order
+    void putChunk(Range)(Range input)
+        if(isInputRange!Range && is(ElementType!Range : T))
+    {
+        putMany(input.retro);
+    }
+
+    // Insert a chunk of elements so they can be 
+    // retrived later in the same order
+    void putChunk(const T[] arr)
+    {
+        putMany(arr.retro);
+    }
+ 
+    @property auto length() const pure
+    {
+        return _data.length;
+    }
+
+    @property auto save()
+    {
+        auto res = This();
+        res._data = _data.dup;
+        return res;
+    }
+};
+
 // InputRange/OutputRange that behave like a bufferized stack
 // Usefull for macro substitution or file inclusion
 // Added ranges are owned by the structure (hence, they must not be used or deleted)
@@ -414,6 +515,8 @@ struct BufferedStack(Range, RangeState = void)
 // A fast growable circular queue
 struct CircularQueue(T)
 {
+    alias This = typeof(this);
+
     private size_t _length;
     private size_t _first;
     private size_t _last;
@@ -425,11 +528,14 @@ struct CircularQueue(T)
             put(x);
     }
 
-    @property typeof(this) dup() // TODO: const ???
+    @property auto dup() const
     {
-        typeof(this) res = this;
-        res._data = res._data.dup;
-        return res;
+        auto result = This();
+        result._length = _length;
+        result._first = _first;
+        result._last = _last;
+        result._data = _data.dup;
+        return result;
     }
  
     @property bool empty() const pure
@@ -443,7 +549,7 @@ struct CircularQueue(T)
         return _data[_first];
     }
  
-    @property auto length() const
+    @property auto length() const pure
     {
         return _length;
     }

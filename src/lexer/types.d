@@ -18,10 +18,13 @@ alias StdTokenType = ILexer.TokenType;
 alias StdTokenValue = ILexer.TokenValue;
 alias StdToken = ILexer.Token;
 
+alias PpcMacroState = immutable(string)[];
+
 pragma(msg, "[OPTIM] Use a range to avoid allocations OR tack the string slice from the source range (if locLength ok)");
 struct PpcIdentifierTokenValue
 {
     string name;
+    PpcMacroState state = [];
 }
 
 pragma(msg, "[OPTIM] Use a range to avoid allocations OR tack the string slice from the source range (if locLength ok)");
@@ -56,7 +59,7 @@ struct PpcParamTokenValue
 
 struct PpcConcatTokenValue
 {
-    PpcToken[] children;
+    immutable(PpcToken)[] children;
     bool isInMacro;
 }
 
@@ -107,7 +110,7 @@ struct PpcToken
     // Transform a token to a string
     // Set pretty to false for direct printing and token stringification
     // Set pretty to true for reporting tokens to the user (enclosed by back-quotes)
-    string toString(bool pretty = true)()
+    string toString(bool pretty = true)() const
     {
         static immutable string[] operatorLexems = [
             "(", ")", "{", "}", "[", "]", ",", "...", ";", ":",
