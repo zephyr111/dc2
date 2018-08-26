@@ -1,3 +1,5 @@
+module lexer.trigraphSubstitution;
+
 import std.stdio;
 import std.range;
 import std.range.primitives;

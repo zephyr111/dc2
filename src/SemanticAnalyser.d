@@ -1,3 +1,5 @@
+module SemanticAnalyser;
+
 import std.stdio;
 import interfaces;
 

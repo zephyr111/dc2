@@ -1,3 +1,5 @@
+module lexer;
+
 import std.stdio;
 import std.range;
 import std.file;
@@ -5,20 +7,20 @@ import std.utf;
 import std.array;
 import core.time;
 import interfaces;
-import locationTracking;
-import trigraphSubstitution;
-import lineSplicing;
-import ppcTokenization;
-import preprocessing;
-import stringConcatenation;
-import stdTokenization;
+import lexer.locationTracking;
+import lexer.trigraphSubstitution;
+import lexer.lineSplicing;
+import lexer.ppcTokenization;
+import lexer.preprocessing;
+import lexer.stringConcatenation;
+import lexer.stdTokenization;
 
 
 pragma(msg, "[BUG] [Issue 19020] findSkip, findSplit and findSplitBefore return wrong results (prefer using findSkip later)");
 pragma(msg, "[NOTE] integers and numbers size are bounded by compiler");
 pragma(msg, "[CHECK] check support of UTF-8 (code & filenames)");
 pragma(msg, "[FIXME] implement TYPE/ENUM/(MACRO?) recognition by interacting with the parser");
-private class Lexer : ILexer, IGo
+public class Lexer : ILexer, IGo
 {
     private
     {

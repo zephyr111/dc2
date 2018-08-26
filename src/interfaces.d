@@ -1,3 +1,5 @@
+module interfaces;
+
 import std.exception;
 import std.variant;
 

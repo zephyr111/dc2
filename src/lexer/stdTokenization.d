@@ -1,3 +1,5 @@
+module lexer.stdTokenization;
+
 import std.stdio;
 import std.range;
 import std.range.primitives;
@@ -10,7 +12,7 @@ import std.conv;
 import std.exception;
 import std.format;
 import interfaces : IErrorHandler;
-import types;
+import lexer.types;
 import utils;
 
 

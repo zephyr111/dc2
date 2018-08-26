@@ -1,3 +1,5 @@
+module Parser;
+
 import std.stdio;
 import interfaces;
 

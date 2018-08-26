@@ -1,3 +1,5 @@
+module lexer.preprocessing;
+
 import std.stdio;
 import std.range;
 import std.range.primitives;
@@ -16,14 +18,14 @@ import std.file; // for #include
 import std.utf; // for #include
 import std.path; // for #include
 import interfaces : IErrorHandler;
-import types;
+import lexer.types;
+import lexer.locationTracking; // for #include
+import lexer.trigraphSubstitution; // for #include
+import lexer.lineSplicing; // for #include
+import lexer.ppcTokenization; // for #include
+import lexer.parsing;
+import lexer.macros;
 import utils;
-import locationTracking; // for #include
-import trigraphSubstitution; // for #include
-import lineSplicing; // for #include
-import ppcTokenization; // for #include
-import parsing;
-import macros;
 
 
 private auto bestLoc(Range)(Range input, TokenLocation fallbackLocation)

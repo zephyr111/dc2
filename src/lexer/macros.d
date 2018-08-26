@@ -1,3 +1,5 @@
+module lexer.macros;
+
 import std.stdio;
 import std.range;
 import std.range.primitives;
@@ -8,7 +10,7 @@ import std.typecons;
 import std.conv;
 import std.datetime;
 import interfaces : IErrorHandler;
-import types;
+import lexer.types;
 import utils;
 
 

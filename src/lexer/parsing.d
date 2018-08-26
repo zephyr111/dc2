@@ -1,3 +1,5 @@
+module lexer.parsing;
+
 import std.stdio;
 import std.range;
 import std.range.primitives;
@@ -11,9 +13,9 @@ import std.conv;
 import std.meta;
 import std.functional;
 import interfaces : IErrorHandler;
-import types;
+import lexer.types;
+import lexer.macros;
 import utils;
-import macros;
 
 
 private static class EvalException : Exception

@@ -1,3 +1,5 @@
+module utils;
+
 import std.range;
 import std.range.primitives;
 import std.algorithm.comparison;

@@ -1,3 +1,5 @@
+module lexer.locationTracking;
+
 import std.stdio;
 import std.range;
 import std.range.primitives;

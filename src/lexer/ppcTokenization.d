@@ -1,3 +1,5 @@
+module lexer.ppcTokenization;
+
 import std.stdio;
 import std.range;
 import std.range.primitives;
@@ -7,7 +9,7 @@ import std.algorithm.searching;
 import std.ascii;
 import std.typecons;
 import interfaces : IErrorHandler;
-import types;
+import lexer.types;
 import utils;
 
 

@@ -1,9 +1,11 @@
+module main;
+
 import std.stdio;
 import std.getopt;
 import std.exception;
 import interfaces;
 import ErrorHandler;
-import Lexer;
+import lexer;
 import Parser;
 import SemanticAnalyser;
 

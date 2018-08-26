@@ -1,3 +1,5 @@
+module ErrorHandler;
+
 import std.stdio;
 import std.format;
 import interfaces;

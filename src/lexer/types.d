@@ -1,3 +1,5 @@
+module lexer.types;
+
 import std.variant;
 import std.conv;
 import std.traits;
