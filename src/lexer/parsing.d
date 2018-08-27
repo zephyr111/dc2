@@ -18,7 +18,7 @@ import lexer.macros;
 import utils;
 
 
-private static class EvalException : Exception
+private class EvalException : Exception
 {
     TokenLocation _location;
     bool _withLocation;
@@ -37,30 +37,34 @@ private static class EvalException : Exception
     }
 }
 
-private static void epicFailure(string msg)
+private void epicFailure(string msg)
 {
     throw new EvalException(msg);
 }
 
-private static void epicFailureEx(string msg, TokenLocation loc)
+private void epicFailureEx(string msg, TokenLocation loc)
 {
     throw new EvalException(msg, loc);
 }
 
 // Type of values use to evaluate preprocessing expresion
 pragma(msg, "[OPTION] prefer warnings rather than errors");
-private static struct PpcValue
+private struct PpcValue
 {
-    alias This = typeof(this);
-
-    union Value
+    private
     {
-        long signed = 0;
-        ulong unsigned;
-    };
+        alias This = typeof(this);
 
-    bool _isSigned = true;
-    Value _value;
+        union Value
+        {
+            long signed = 0;
+            ulong unsigned;
+        };
+
+        bool _isSigned = true;
+        Value _value;
+    }
+
 
     this(T)(T val, bool isSigned)
         if(isIntegral!T)
@@ -140,11 +144,15 @@ private static struct PpcValue
     }
 }
 
-private static struct Parser(Range)
+private struct Parser(Range)
 {
-    private RefRange!Range _input;
-    private IErrorHandler _errorHandler;
-    private MacroDb _macros;
+    private
+    {
+        RefRange!Range _input;
+        IErrorHandler _errorHandler;
+        MacroDb _macros;
+    }
+
 
     this(ref Range input, IErrorHandler errorHandler, MacroDb macros)
     {

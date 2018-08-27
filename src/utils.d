@@ -171,10 +171,14 @@ auto replicates(Range)(Range input)
 {
     struct Result
     {
-        alias Element = typeof(_input.front);
+        private
+        {
+            alias Element = typeof(_input.front);
 
-        private bool[Element] _lookup;
-        private Range _input;
+            bool[Element] _lookup;
+            Range _input;
+        }
+
 
         this(Range input)
         {
@@ -327,9 +331,13 @@ auto escape(EscapeType esc = EscapeType.ALL, Range)(Range inputRange)
 // Usefull for macro substitution
 struct Stack(T)
 {
-    alias This = typeof(this);
+    private
+    {
+        alias This = typeof(this);
 
-    private T[] _data = [];
+        T[] _data = [];
+    }
+
 
     @property bool empty() const pure
     {
@@ -430,10 +438,14 @@ struct Stack(T)
 struct BufferedStack(Range, RangeState = void)
     if(isInputRange!Range)
 {
-    static if(is(RangeState : void))
-        SList!Range _data;
-    else
-        SList!(Tuple!(Range, RangeState)) _data;
+    private
+    {
+        static if(is(RangeState : void))
+            SList!Range _data;
+        else
+            SList!(Tuple!(Range, RangeState)) _data;
+    }
+
 
     @property bool empty()
     {
@@ -517,12 +529,16 @@ struct BufferedStack(Range, RangeState = void)
 // A fast growable circular queue
 struct CircularQueue(T)
 {
-    alias This = typeof(this);
+    private
+    {
+        alias This = typeof(this);
 
-    private size_t _length;
-    private size_t _first;
-    private size_t _last;
-    private T[] _data = [T.init];
+        size_t _length;
+        size_t _first;
+        size_t _last;
+        T[] _data = [T.init];
+    }
+
  
     this(T[] items...)
     {
@@ -596,29 +612,33 @@ struct CircularQueue(T)
 // See lookAhead function
 private struct LookAhead(Range)
 {
-    alias This = typeof(this);
-    alias Element = typeof(Range.front);
-
-    private final class Local
+    private
     {
-        CircularQueue!Element data;
-        int count = 0;
-    }
+        alias This = typeof(this);
+        alias Element = typeof(Range.front);
 
-    private final class Shared
-    {
-        Range input;
-        Local[] locals;
-
-        this(Range input, Local[] locals)
+        final class Local
         {
-            this.input = input;
-            this.locals = locals;
+            CircularQueue!Element data;
+            int count = 0;
         }
+
+        final class Shared
+        {
+            Range input;
+            Local[] locals;
+
+            this(Range input, Local[] locals)
+            {
+                this.input = input;
+                this.locals = locals;
+            }
+        }
+
+        Shared _shared;
+        Local _local;
     }
 
-    private Shared _shared;
-    private Local _local;
 
     this(Range input)
     {
@@ -697,12 +717,16 @@ private struct LookAhead(Range)
 // call many phobos functions...
 /*struct FastLookAhead(Range)
 {
-    alias This = typeof(this);
-    alias Element = typeof(Range.front);
+    private
+    {
+        alias This = typeof(this);
+        alias Element = typeof(Range.front);
 
-    private Range _input;
-    private CircularQueue!Element _data;
-    private bool _register = false;
+        Range _input;
+        CircularQueue!Element _data;
+        bool _register = false;
+    }
+
 
     this(Range input)
     {

@@ -88,8 +88,12 @@ struct Macro
 pragma(msg, "[OPTIM] put methods const when it is possible (impact the whole code)");
 final class MacroDb
 {
-    private Macro[string] _db;
-    private DateTime _now;
+    private
+    {
+        Macro[string] _db;
+        DateTime _now;
+    }
+
 
     // QUID: copy
     this()
@@ -186,9 +190,13 @@ final class MacroDb
 struct MacroSubstitution(Range)
     if(isForwardRange!Range && is(ElementType!Range == PpcToken))
 {
-    Range* _input;
-    MacroDb _macros;
-    IErrorHandler _errorHandler;
+    private
+    {
+        Range* _input;
+        MacroDb _macros;
+        IErrorHandler _errorHandler;
+    }
+
 
     this(ref Range input, MacroDb macros, IErrorHandler errorHandler)
     {

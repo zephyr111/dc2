@@ -12,71 +12,75 @@ import utils;
 
 // Lazy range: consume not more char than requested
 // Cannot take an InputRange as input due to look-ahead parsing
-auto substituteTrigraph(Range)(Range input)
-    if(isForwardRange!Range && isSomeChar!(ElementEncodingType!Range) && !isConvertibleToString!Range)
+struct TrigraphSubstitution(Range)
 {
-    static struct Result
+    private
     {
         alias This = typeof(this);
 
-        private Range _input;
-
-        this(Range input)
-        {
-            _input = input;
-        }
-
-        @property bool empty()
-        {
-            return _input.empty;
-        }
-
-        @property auto front()
-        {
-            auto first = _input.front;
-
-            if(first == '?')
-            {
-                auto lookAhead = _input.save.dropOne;
-
-                if(lookAhead.skipIf('?') && !lookAhead.empty)
-                {
-                    const long pos = "=/'()!<>-".indexOf(lookAhead.front);
-
-                    if(pos >= 0)
-                        return "#\\^[]|{}~"[pos];
-                }
-            }
-
-            return first;
-        }
-
-        void popFront()
-        {
-            auto first = _input.front;
-            _input.popFront();
-
-            if(first == '?' && _input.startsWith('?'))
-            {
-                auto lookAhead = _input.save.dropOne;
-
-                if(!lookAhead.empty && "=/'()!<>-".canFind(lookAhead.front))
-                    _input = lookAhead.dropOne;
-            }
-        }
-
-        @property auto save()
-        {
-            return This(_input.save);
-        }
-
-        @property auto filename() const { return _input.filename; }
-        @property auto line() const { return _input.line; }
-        @property auto col() const { return _input.col; }
-        @property auto pos() const { return _input.pos; }
+        Range _input;
     }
 
-    return Result(input);
+
+    this(Range input)
+    {
+        _input = input;
+    }
+
+    @property bool empty()
+    {
+        return _input.empty;
+    }
+
+    @property auto front()
+    {
+        auto first = _input.front;
+
+        if(first == '?')
+        {
+            auto lookAhead = _input.save.dropOne;
+
+            if(lookAhead.skipIf('?') && !lookAhead.empty)
+            {
+                const long pos = "=/'()!<>-".indexOf(lookAhead.front);
+
+                if(pos >= 0)
+                    return "#\\^[]|{}~"[pos];
+            }
+        }
+
+        return first;
+    }
+
+    void popFront()
+    {
+        auto first = _input.front;
+        _input.popFront();
+
+        if(first == '?' && _input.startsWith('?'))
+        {
+            auto lookAhead = _input.save.dropOne;
+
+            if(!lookAhead.empty && "=/'()!<>-".canFind(lookAhead.front))
+                _input = lookAhead.dropOne;
+        }
+    }
+
+    @property auto save()
+    {
+        return This(_input.save);
+    }
+
+    @property auto filename() const { return _input.filename; }
+    @property auto line() const { return _input.line; }
+    @property auto col() const { return _input.col; }
+    @property auto pos() const { return _input.pos; }
+}
+
+TrigraphSubstitution!Range substituteTrigraph(Range)(Range input)
+    if(isForwardRange!Range && isSomeChar!(ElementEncodingType!Range) && !isConvertibleToString!Range)
+{
+    return TrigraphSubstitution!Range(input);
 }
 
 

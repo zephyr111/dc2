@@ -10,55 +10,59 @@ import std.algorithm.searching;
 // Greedy lazy range: consume not more char than requested,
 // while eating as much line split as possible
 // Cannot take an InputRange as input due to look-ahead parsing
-auto spliceLines(Range)(Range input)
-    if(isForwardRange!Range && isSomeChar!(ElementEncodingType!Range) && !isConvertibleToString!Range)
+struct LineSplicing(Range)
 {
-    static struct Result
+    private
     {
         alias This = typeof(this);
 
-        private Range _input;
-
-        this(Range input)
-        {
-            _input = input;
-            trim();
-        }
-
-        private void trim()
-        {
-            while(_input.startsWith('\\') && _input.save.dropOne.startsWith('\n'))
-                _input.popFrontExactly(2);
-        }
-
-        @property bool empty()
-        {
-            return _input.empty;
-        }
-
-        @property auto front()
-        {
-            return _input.front;
-        }
-
-        void popFront()
-        {
-            _input.popFront();
-            trim();
-        }
-
-        @property auto save()
-        {
-            return This(_input.save);
-        }
-
-        @property auto filename() const { return _input.filename; }
-        @property auto line() const { return _input.line; }
-        @property auto col() const { return _input.col; }
-        @property auto pos() const { return _input.pos; }
+        Range _input;
     }
 
-    return Result(input);
+
+    this(Range input)
+    {
+        _input = input;
+        trim();
+    }
+
+    private void trim()
+    {
+        while(_input.startsWith('\\') && _input.save.dropOne.startsWith('\n'))
+            _input.popFrontExactly(2);
+    }
+
+    @property bool empty()
+    {
+        return _input.empty;
+    }
+
+    @property auto front()
+    {
+        return _input.front;
+    }
+
+    void popFront()
+    {
+        _input.popFront();
+        trim();
+    }
+
+    @property auto save()
+    {
+        return This(_input.save);
+    }
+
+    @property auto filename() const { return _input.filename; }
+    @property auto line() const { return _input.line; }
+    @property auto col() const { return _input.col; }
+    @property auto pos() const { return _input.pos; }
+}
+
+LineSplicing!Range spliceLines(Range)(Range input)
+    if(isForwardRange!Range && isSomeChar!(ElementEncodingType!Range) && !isConvertibleToString!Range)
+{
+    return LineSplicing!Range(input);
 }
 
 
