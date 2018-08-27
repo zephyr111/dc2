@@ -100,12 +100,12 @@ struct StringConcatenation(Range)
         }
     }
 
-    @property auto save()
+    /*@property auto save()
     {
         This result = this;
         result._input = _input.save;
         return result;
-    }
+    }*/
 }
 
 StringConcatenation!Range concatStrings(Range)(Range input, IErrorHandler errorHandler)

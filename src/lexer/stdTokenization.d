@@ -243,12 +243,12 @@ struct StdTokenization(Range)
             computeNext();
     }
 
-    @property auto save()
+    /*@property auto save()
     {
         This result = this;
         result._input = _input.save;
         return result;
-    }
+    }*/
 }
 
 StdTokenization!Range stdTokenize(Range)(Range input, IErrorHandler errorHandler)

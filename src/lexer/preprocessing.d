@@ -684,8 +684,7 @@ struct Preprocessing(InputRange)
     }
 
     // Note: included range should not be directly copied
-    pragma(msg, "[FIXME] implement a resource manager to load files once while enabling look-ahead");
-    @property This save()
+    /*@property This save()
     {
         This result = this;
         result._workingRange = _workingRange.save;
@@ -703,7 +702,7 @@ struct Preprocessing(InputRange)
 
         result._conditionalStates = _conditionalStates.dup;
         return result;
-    }
+    }*/
 }
 
 Preprocessing!Range preprocess(Range)(Range input, IErrorHandler errorHandler, MacroDb parentMacros = null, int nestingLevel = 0)
