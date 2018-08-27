@@ -2,6 +2,7 @@ module interfaces;
 
 import std.exception;
 import std.variant;
+import std.typecons;
 
 
 interface ILexer
@@ -108,7 +109,7 @@ interface ILexer
         ulong length;
     }
 
-    Token next();
+    Nullable!Token next();
 }
 
 interface IParser

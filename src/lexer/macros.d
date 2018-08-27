@@ -19,13 +19,15 @@ import utils;
 struct PrefixedRange(R1, R2)
     if(isInputRange!R1 && isInputRange!R2 && is(ElementType!R1 == ElementType!R2))
 {
-    R1 _prefixRange;
+    private alias This = typeof(this);
+
     R2 _input;
+    R1 _prefixRange;
 
     this(R2 input, R1 prefixRange = R1())
     {
-        _prefixRange = prefixRange;
         _input = input;
+        _prefixRange = prefixRange;
     }
 
     @property bool empty()
@@ -52,10 +54,7 @@ struct PrefixedRange(R1, R2)
     {
         @property auto save()
         {
-            typeof(this) result = this;
-            result._prefixRange = _prefixRange.save;
-            result._input = _input.save;
-            return result;
+            return This(_input.save, _prefixRange.save);
         }
     }
 }

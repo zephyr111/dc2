@@ -14,15 +14,9 @@ import std.format;
 import std.string;
 import std.conv;
 import std.container;
-import std.file; // for #include
-import std.utf; // for #include
-import std.path; // for #include
 import interfaces : IErrorHandler;
 import lexer.types;
-import lexer.locationTracking; // for #include
-import lexer.trigraphSubstitution; // for #include
-import lexer.lineSplicing; // for #include
-import lexer.ppcTokenization; // for #include
+import lexer.fileLoading;
 import lexer.parsing;
 import lexer.macros;
 import utils;
@@ -55,6 +49,7 @@ struct Preprocessing(InputRange)
         alias IncludeRange = This[];
 
         WorkingRange _workingRange;
+        FileManager _fileManager;
         IncludeRange _includeRange;
         IErrorHandler _errorHandler;
         Nullable!PpcToken _result;
@@ -66,9 +61,10 @@ struct Preprocessing(InputRange)
     }
 
 
-    this(InputRange input, IErrorHandler errorHandler, MacroDb parentMacros, int nestingLevel)
+    this(InputRange input, FileManager fileManager, IErrorHandler errorHandler, MacroDb parentMacros, int nestingLevel)
     {
         _workingRange = WorkingRange(lookAhead(input));
+        _fileManager = fileManager;
         _errorHandler = errorHandler;
         _nestingLevel = nestingLevel;
 
@@ -126,54 +122,8 @@ struct Preprocessing(InputRange)
             if(!_workingRange.forwardIf!(a => a.type == HEADER_NAME, (a) {value = a.value.get!PpcHeaderTokenValue;}))
                 return directiveFailure("expecting header name", currLoc(loc));
 
-            string filename;
-
-            if(!value.isGlobal)
-            {
-                pragma(msg, "[OPTION] check the CPATH environment variable");
-                pragma(msg, "[OPTION] check user-specified additional include paths");
-                if(value.name.exists && (value.name.isFile || value.name.isSymlink))
-                    filename = value.name;
-            }
-
-            if(filename.empty)
-            {
-                enum includePaths = ["/usr/include/x86_64-linux-musl/"];
-                // ["/usr/include/", "/usr/include/x86_64-linux-gnu/"]
-
-                // search the file in the include paths
-                foreach(includePath ; includePaths)
-                {
-                    auto tmp = chainPath(includePath, value.name);
-
-                    if(tmp.exists && (tmp.isFile || tmp.isSymlink))
-                    {
-                        filename = tmp.array;
-                        break;
-                    }
-                }
-            }
-
-            if(filename.empty)
-                return directiveFailure(format!"unable to find the file `%s`"(value.name), currLoc(loc));
-
-            dstring dstr;
-
-            try
-                dstr = readText(filename).byDchar.array;
-            catch(FileException)
-                return directiveFailure(format!"unable to open the file `%s`"(filename), currLoc(loc));
-            catch(UTFException)
-                return directiveFailure(format!"unable to decode the file `%s` using UTF-8"(filename), currLoc(loc));
-
-            // Avoid runaway recursion
-            if(_nestingLevel >= 200)
-                return directiveFailure("#include nested too deeply", currLoc(loc));
-
-            auto range = This(dstr.trackLocation(filename)
-                                .substituteTrigraph
-                                .spliceLines
-                                .ppcTokenize(_errorHandler), _errorHandler, _macros, _nestingLevel+1);
+            auto range = _fileManager.preprocessFile(value.name, value.isGlobal, 
+                                                        _macros, _nestingLevel+1);
 
             if(!range.empty)
                 _includeRange ~= range;
@@ -705,9 +655,11 @@ struct Preprocessing(InputRange)
     }*/
 }
 
-Preprocessing!Range preprocess(Range)(Range input, IErrorHandler errorHandler, MacroDb parentMacros = null, int nestingLevel = 0)
+Preprocessing!Range preprocess(Range)(Range input, FileManager fileManager, 
+                                        IErrorHandler errorHandler, MacroDb parentMacros = null, 
+                                        int nestingLevel = 0)
     if(isInputRange!Range && is(ElementType!Range : PpcToken))
 {
-    return Preprocessing!Range(input, errorHandler, parentMacros, nestingLevel);
+    return Preprocessing!Range(input, fileManager, errorHandler, parentMacros, nestingLevel);
 };
 

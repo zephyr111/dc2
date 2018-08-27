@@ -2,18 +2,14 @@ module lexer;
 
 import std.stdio;
 import std.range;
-import std.file;
-import std.utf;
-import std.array;
+import std.traits;
+import std.typecons;
+import std.algorithm.iteration;
+import std.algorithm.mutation;
 import core.time;
 import interfaces;
-import lexer.locationTracking;
-import lexer.trigraphSubstitution;
-import lexer.lineSplicing;
-import lexer.ppcTokenization;
-import lexer.preprocessing;
-import lexer.stringConcatenation;
-import lexer.stdTokenization;
+import lexer.fileLoading;
+import lexer.types;
 
 
 pragma(msg, "[BUG] [Issue 19020] findSkip, findSplit and findSplitBefore return wrong results (prefer using findSkip later)");
@@ -24,86 +20,62 @@ public class Lexer : ILexer, IGo
 {
     private
     {
-        struct FileContext
-        {
-            string filename;
-            ulong line = 0;
-            ulong col = 0;
-            string data;
-        }
+        alias Range = ReturnType!(FileManager.computeFile);
 
-        FileContext[] _contexts;
+        string _filename;
         IErrorHandler _errorHandler;
+        FileManager _fileManager;
+        Range _input;
+        Nullable!StdToken result;
+        bool _first = true;
     }
+
 
     this(string filename, IErrorHandler errorHandler)
     {
-        _contexts.reserve(16);
-
-        try
-        {
-            _contexts ~= FileContext(filename, 0, 0, readText(filename));
-        }
-        catch(FileException err)
-        {
-            errorHandler.missingFile(filename);
-        }
-
+        _filename = filename;
+        _fileManager = new FileManager(errorHandler);
         _errorHandler = errorHandler;
     }
 
-    // Use a sliding window lexer ? a forward range with save ?
-    // => Done in the LL parser => Separation of concerns
-    override Token next()
+    override Nullable!StdToken next()
     {
-        FileContext* context = &_contexts[$-1];
-        Token token;
+        if(_first)
+            _input = _fileManager.computeFile(_filename);
+        _first = false;
 
-        //while(true)
-        {
-//auto s = MonoTime.currTime;
+        if(_input.empty)
+            return Nullable!Token();
 
-            //
-
-//auto e = MonoTime.currTime;
-//writeln(e-s);
-        }
-
-        return token;
+        auto res = _input.front.nullable;
+        _input.popFront();
+        return res;
     }
 
+    // Only preprocessing
     override void go()
     {
-        dstring dstr = _contexts[$-1].data.byDchar.array;
-ulong tokenCount = 0;
-auto s = MonoTime.currTime;
-        auto acc = appender!string;
-
-        foreach(token ; dstr.trackLocation(_contexts[$-1].filename)
-                                .substituteTrigraph
-                                .spliceLines
-                                .ppcTokenize(_errorHandler)
-                                .preprocess(_errorHandler)
-                                .concatStrings(_errorHandler)
-                                .stdTokenize(_errorHandler))
+        version(report)
         {
-            //acc.put(token.toString!false);
-            tokenCount++;
-            //writeln("token: ", token);
+            ulong tokenCount = 0;
+            auto startTime = MonoTime.currTime;
         }
-        //acc.data.writeln;
-auto e = MonoTime.currTime;
-writeln(e-s);
-writefln("%d tokens found", tokenCount);
 
-        /*Token token;
+        auto ppcTokens = _fileManager.precomputeFile(_filename);
+        auto stringified = ppcTokens.move.map!(a => a.toString!false);
 
-        do
+        version(report)
+            writeln(stringified.move.tee!((a) {tokenCount++;}).join);
+        else
+            writeln(stringified.move.join);
+
+        version(report)
         {
-            token = next();
-            writeln(token.type, " ", token.location.line, " ", token.location.col);
+            auto endTime = MonoTime.currTime;
+            writefln("Report:");
+            writefln("    - Completion time: %s", endTime-startTime);
+            writefln("    - Number of tokens found: %d", tokenCount);
         }
-        while(token.type != StdTokenType.EOF);*/
     }
 }
 

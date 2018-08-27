@@ -57,7 +57,7 @@ struct StringConcatenation(Range)
 
         auto secondToken = lookAhead.front;
 
-        if(firstToken.type != secondToken.type)
+        if(secondToken.type != PpcTokenType.STRING)
             return firstToken;
 
         pragma(msg, "[OPTION] handle better wide string (cf. encoding)");

@@ -615,7 +615,7 @@ private struct LookAhead(Range)
     private
     {
         alias This = typeof(this);
-        alias Element = typeof(Range.front);
+        alias Element = ElementType!Range;
 
         final class Local
         {
@@ -656,16 +656,51 @@ private struct LookAhead(Range)
         _shared.locals ~= _local;
     }
 
+    // Used to move the structure (destructive-copy)
     this(this)
     {
-        assert(_local !is null);
+        assert((_local is null) == (_shared is null));
+        assert(_local is null || _local.count >= 0);
+
+        // Instances not yet truly built (created via struct.init)
+        if(_local is null)
+            return;
+
         _local.count++;
+    }
+
+    // Used to copy the structure
+    //@disable 
+    void opAssign()(auto ref This rhs)
+    {
+        assert((_local is null) == (_shared is null));
+        assert(_local is null || _local.count >= 0);
+        assert((rhs._local is null) == (rhs._shared is null));
+        assert(rhs._local is null || rhs._local.count >= 0);
+
+        auto oldLocal = _local;
+        auto oldShared = _shared;
+
+        _local = rhs._local;
+        _shared = rhs._shared;
+
+        // rhs not created via struct.init
+        if(_local !is null)
+            _local.count++;
+
+        // lhs not created via struct.init
+        if(oldLocal !is null && oldLocal.count-- == 0)
+            oldShared.locals = oldShared.locals.remove!(a => a is oldLocal);
     }
 
     ~this()
     {
-        assert(_local !is null && _shared !is null);
-        assert(_local.count >= 0);
+        assert((_local is null) == (_shared is null));
+        assert(_local is null || _local.count >= 0);
+
+        // Instance created via struct.init
+        if(_local is null)
+            return;
 
         if(_local.count-- == 0)
             _shared.locals = _shared.locals.remove!(a => a is _local);
