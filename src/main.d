@@ -4,9 +4,11 @@ import std.stdio;
 import std.range;
 import std.algorithm.searching;
 import std.algorithm.comparison;
+import std.algorithm.mutation;
 import std.algorithm.iteration;
 import std.getopt;
 import std.exception;
+import std.process;
 import std.file;
 import interfaces;
 import ErrorHandler;
@@ -71,6 +73,9 @@ int main(string[] args)
             auto semAnalyser = new SemanticAnalyser(parser, errorHandler);
 
             foreach(path ; includePaths)
+                lexer.addIncludePath(path);
+
+            foreach(path ; environment.get("CPATH", "").splitter(":").filter!(a => !a.empty))
                 lexer.addIncludePath(path);
 
             if(preprocessorOnly)

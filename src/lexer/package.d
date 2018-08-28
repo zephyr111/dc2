@@ -35,7 +35,7 @@ public class Lexer : ILexer, IGo
     this(string filename, IErrorHandler errorHandler)
     {
         _filename = filename;
-        _fileManager = new FileManager(errorHandler, filename.dirName);
+        _fileManager = new FileManager(errorHandler);
         _errorHandler = errorHandler;
     }
 

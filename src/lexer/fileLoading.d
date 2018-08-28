@@ -10,6 +10,7 @@ import std.format;
 import std.file;
 import std.traits;
 import std.exception;
+import std.conv;
 import interfaces : IErrorHandler;
 import lexer.locationTracking;
 import lexer.trigraphSubstitution;
@@ -21,8 +22,6 @@ import lexer.stringConcatenation;
 import lexer.stdTokenization;
 
 
-pragma(msg, "[OPTION] check the CPATH environment variable");
-pragma(msg, "[OPTION] check user-specified additional include paths");
 final class FileManager
 {
     private
@@ -40,71 +39,52 @@ final class FileManager
 
         IErrorHandler _errorHandler;
         string[string] _contentCache;
-        string[string] _locateCache;
-        string _workingDirectory;
         string[] _userIncludePaths = [];
     }
 
 
-    this(IErrorHandler errorHandler, string workingDirectory = null)
+    this(IErrorHandler errorHandler)
     {
         _errorHandler = errorHandler;
-
-        if(workingDirectory is null)
-            _workingDirectory = getcwd();
-        else
-            _workingDirectory = absolutePath(workingDirectory);
 
         alias errMsg = filename => format!"standard file `%s` not found"(filename);
         foreach(filename ; _stdFiles)
             assertNotThrown(locate(filename, true), errMsg(filename));
     }
 
-    @property public string workingDirectory()
-    {
-        return _workingDirectory;
-    }
-
+    // Append an include path the the end of the user include path list
     public void addIncludePath(string includePath)
     {
-        _userIncludePaths ~= absolutePath(includePath, _workingDirectory);
+        _userIncludePaths ~= includePath;
     }
 
+    // Return the list of include path (in the highest-priority-first order)
     public auto includePaths() const
     {
-        return chain(_defaultSystemPaths, _userIncludePaths);
+        return chain(_userIncludePaths, _defaultSystemPaths);
     }
 
-    // Use an internal cache to fetch the file path of already located files faster
-    public string locate(string filename, bool isGlobal)
+    // Find the true system file path from an include directive string
+    private auto locate(string filename, bool isGlobal, string workingDirectory = ".")
     {
-        auto foundPath = filename in _locateCache;
+        alias fileExists = a => a.exists && (a.isFile || a.isSymlink);
 
-        if(foundPath !is null)
-            return *foundPath;
+        // Search the file in the default/user includes paths first
+        // whatever the type of include
+        foreach(includePath ; includePaths)
+        {
+            auto filePath = chainPath(includePath, filename);
+
+            if(fileExists(filePath.save))
+                return filePath.to!string;
+        }
 
         if(!isGlobal)
         {
-            pragma(msg, "[FIXME] local file inclusion does not works well")
-            auto filePath = filename.absolutePath(_workingDirectory);
+            auto filePath = chainPath(workingDirectory, filename);
 
-            if(filePath.exists && (filePath.isFile || filePath.isSymlink))
-            {
-                _locateCache[filename] = filePath;
-                return filePath;
-            }
-        }
-
-        // Search the file in the include paths
-        foreach(includePath ; includePaths)
-        {
-            auto path = absolutePath(filename, includePath);
-
-            if(path.exists && (path.isFile || path.isSymlink))
-            {
-                _locateCache[filename] = path;
-                return path;
-            }
+            if(fileExists(filePath.save))
+                return filePath.to!string;
         }
 
         throw new FileException(format!"unable to locate the file `%s`"(filename));
@@ -118,22 +98,17 @@ final class FileManager
         if(foundContent !is null)
             return *foundContent;
 
-        string content;
-
         try
-            content = readText(filePath);
+            return (_contentCache[filePath] = readText(filePath));
         catch(FileException)
             throw new FileException(format!"unable to open the file `%s`"(filePath));
         catch(UTFException)
             throw new FileException(format!"unable to decode the file `%s` using UTF-8"(filePath));
-
-        _contentCache[filePath] = content;
-        return content;
     }
 
-    private auto tokenizedLoad(string filePath, string filename)
+    private auto tokenizedLoad(string filename)
     {
-        auto content = load(filePath);
+        auto content = load(filename);
         auto wideContent = content.byDchar;
         return wideContent.trackLocation(filename)
                         .substituteTrigraph
@@ -143,22 +118,25 @@ final class FileManager
 
     // Load a file and preprocess its content
     // Can throw a FileException
-    public PreprocessingRange preprocessFile(string filename, bool isGlobal, MacroDb macros, int nestingLevel = -1)
+    public PreprocessingRange preprocessFile(string includedFilename, bool isGlobal, 
+                                                string sourceFilename, 
+                                                MacroDb macros, int nestingLevel = -1)
     {
-        auto filePath = locate(filename, isGlobal);
+        auto finalFilename = locate(includedFilename, isGlobal, 
+                                    sourceFilename.dirName);
 
         // Avoid runaway recursion
         if(nestingLevel+1 >= maxNestingLevel)
             throw new FileException("#include nested too deeply");
 
-        auto tokenized = tokenizedLoad(filePath, filename);
+        auto tokenized = tokenizedLoad(finalFilename);
         return tokenized.preprocess(this, _errorHandler, macros, nestingLevel+1);
     }
 
     // Compute only preprocessing phases for a given file
     public PreprocessingRange precomputeFile(string filename)
     {
-        auto tokenized = tokenizedLoad(filename, filename);
+        auto tokenized = tokenizedLoad(filename);
         return tokenized.preprocess(this, _errorHandler);
     }
 

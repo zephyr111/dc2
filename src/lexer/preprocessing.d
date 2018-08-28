@@ -13,6 +13,7 @@ import std.exception;
 import std.format;
 import std.string;
 import std.conv;
+import std.file;
 import std.container;
 import interfaces : IErrorHandler;
 import lexer.types;
@@ -125,12 +126,13 @@ struct Preprocessing(InputRange)
             try
             {
                 auto range = _fileManager.preprocessFile(value.name, value.isGlobal, 
+                                                            loc.filename, 
                                                             _macros, _nestingLevel+1);
 
                 if(!range.empty)
                     _includeRange ~= range;
             }
-            catch(std.file.FileException err)
+            catch(FileException err)
             {
                 epicFailure(err.msg, loc);
             }
