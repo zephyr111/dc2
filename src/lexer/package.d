@@ -2,10 +2,11 @@ module lexer;
 
 import std.stdio;
 import std.range;
-import std.traits;
-import std.typecons;
 import std.algorithm.iteration;
 import std.algorithm.mutation;
+import std.traits;
+import std.typecons;
+import std.path;
 import core.time;
 import interfaces;
 import lexer.fileLoading;
@@ -34,7 +35,7 @@ public class Lexer : ILexer, IGo
     this(string filename, IErrorHandler errorHandler)
     {
         _filename = filename;
-        _fileManager = new FileManager(errorHandler);
+        _fileManager = new FileManager(errorHandler, filename.dirName);
         _errorHandler = errorHandler;
     }
 
@@ -52,8 +53,18 @@ public class Lexer : ILexer, IGo
         return res;
     }
 
+    override public void addIncludePath(string includePath)
+    {
+        _fileManager.addIncludePath(includePath);
+    }
+
+    override public const(string)[] includePaths() const
+    {
+        return _fileManager.includePaths().array;
+    }
+
     // Only preprocessing
-    override void go()
+    override public void go()
     {
         version(report)
         {

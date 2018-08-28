@@ -122,11 +122,18 @@ struct Preprocessing(InputRange)
             if(!_workingRange.forwardIf!(a => a.type == HEADER_NAME, (a) {value = a.value.get!PpcHeaderTokenValue;}))
                 return directiveFailure("expecting header name", currLoc(loc));
 
-            auto range = _fileManager.preprocessFile(value.name, value.isGlobal, 
-                                                        _macros, _nestingLevel+1);
+            try
+            {
+                auto range = _fileManager.preprocessFile(value.name, value.isGlobal, 
+                                                            _macros, _nestingLevel+1);
 
-            if(!range.empty)
-                _includeRange ~= range;
+                if(!range.empty)
+                    _includeRange ~= range;
+            }
+            catch(std.file.FileException err)
+            {
+                epicFailure(err.msg, loc);
+            }
         }
     }
 

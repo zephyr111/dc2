@@ -109,7 +109,9 @@ interface ILexer
         ulong length;
     }
 
-    Nullable!Token next();
+    public void addIncludePath(string includePath);
+    public const(string)[] includePaths() const;
+    public Nullable!Token next();
 }
 
 interface IParser

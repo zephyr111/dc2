@@ -32,7 +32,7 @@ final class FileManager
         alias StdTokenizationRange = StdTokenization!(StringConcatenation!PreprocessingRange);
 
         enum maxNestingLevel = 200;
-        enum _systemIncludePaths = ["/usr/include/x86_64-linux-musl/"];
+        enum _defaultSystemPaths = ["/usr/include/x86_64-linux-musl/"];
         enum _stdFiles = ["assert.h", "locale.h", "stddef.h", "ctype.h",
                                 "math.h", "stdio.h", "errno.h", "setjmp.h",
                                 "stdlib.h", "float.h", "signal.h", "string.h",
@@ -41,17 +41,38 @@ final class FileManager
         IErrorHandler _errorHandler;
         string[string] _contentCache;
         string[string] _locateCache;
+        string _workingDirectory;
         string[] _userIncludePaths = [];
     }
 
 
-    this(IErrorHandler errorHandler)
+    this(IErrorHandler errorHandler, string workingDirectory = null)
     {
         _errorHandler = errorHandler;
+
+        if(workingDirectory is null)
+            _workingDirectory = getcwd();
+        else
+            _workingDirectory = absolutePath(workingDirectory);
 
         alias errMsg = filename => format!"standard file `%s` not found"(filename);
         foreach(filename ; _stdFiles)
             assertNotThrown(locate(filename, true), errMsg(filename));
+    }
+
+    @property public string workingDirectory()
+    {
+        return _workingDirectory;
+    }
+
+    public void addIncludePath(string includePath)
+    {
+        _userIncludePaths ~= absolutePath(includePath, _workingDirectory);
+    }
+
+    public auto includePaths() const
+    {
+        return chain(_defaultSystemPaths, _userIncludePaths);
     }
 
     // Use an internal cache to fetch the file path of already located files faster
@@ -62,37 +83,31 @@ final class FileManager
         if(foundPath !is null)
             return *foundPath;
 
-        pragma(msg, "[FIXME] convert all paths to absolute ones");
-
         if(!isGlobal)
         {
-            if(filename.exists && (filename.isFile || filename.isSymlink))
+            pragma(msg, "[FIXME] local file inclusion does not works well")
+            auto filePath = filename.absolutePath(_workingDirectory);
+
+            if(filePath.exists && (filePath.isFile || filePath.isSymlink))
             {
-                _locateCache[filename] = filename;
-                return filename;
+                _locateCache[filename] = filePath;
+                return filePath;
             }
         }
-
-        string found;
-        auto includePaths = chain(_systemIncludePaths, _userIncludePaths);
 
         // Search the file in the include paths
         foreach(includePath ; includePaths)
         {
-            auto tmp = chainPath(includePath, filename);
+            auto path = absolutePath(filename, includePath);
 
-            if(tmp.exists && (tmp.isFile || tmp.isSymlink))
+            if(path.exists && (path.isFile || path.isSymlink))
             {
-                found = tmp.array;
-                break;
+                _locateCache[filename] = path;
+                return path;
             }
         }
 
-        if(found.empty)
-            throw new FileException(format!"unable to locate the file `%s`"(filename));
-
-        _locateCache[filename] = found;
-        return found;
+        throw new FileException(format!"unable to locate the file `%s`"(filename));
     }
 
     // Use an internal cache to get the content of already loaded files faster
