@@ -124,32 +124,40 @@ struct PpcToken
 
         with(PpcTokenType)
         {
+            enum ppcStart = LPAREN.asOriginalType;
+            enum ppcEnd = XOR_ASSIGN.asOriginalType;
+            static assert(is(OriginalType!PpcTokenType == int));
+            static assert(ppcEnd-ppcStart+1 == operatorLexems.length);
+
+            if(type == SPACING)
+                return " ";
+            else if(type == IDENTIFIER)
+                return value.get!PpcIdentifierTokenValue.name;
+            else if(type >= ppcStart && type <= ppcEnd)
+                return operatorLexems[type.asOriginalType-ppcStart];
+            else if(type == NUMBER)
+                return value.get!PpcNumberTokenValue.content;
+            else if(type == NEWLINE)
+                return "\n";
+            else if(type == STRING)
+            {
+                auto actualValue = value.get!PpcStringTokenValue;
+                enum finalEscapeType = pretty ? EscapeType.REPR_DQUOTES : EscapeType.ONLY_DQUOTES;
+                auto finalContent = actualValue.content.escape!finalEscapeType;
+                return text(actualValue.isWide ? "L\"" : "\"", finalContent, "\"");
+            }
+            else if(type == CHARACTER)
+            {
+                auto actualValue = value.get!PpcCharTokenValue;
+                enum finalEscapeType = pretty ? EscapeType.REPR_SQUOTES : EscapeType.ONLY_SQUOTES;
+                auto finalContent = actualValue.content.escapeChar!finalEscapeType;
+                return text(actualValue.isWide ? "L'" : "'", finalContent, "'");
+            }
+
+            // Other unlikely cases
             switch(type)
             {
-                case IDENTIFIER:
-                    return value.get!PpcIdentifierTokenValue.name;
-                case MACRO_PARAM:
-                    return format!"[MACRO_PARAM_%s]"(value.get!PpcParamTokenValue.id);
-                case NUMBER:
-                    return value.get!PpcNumberTokenValue.content;
-                case CHARACTER:
-                    auto actualValue = value.get!PpcCharTokenValue;
-                    enum finalEscapeType = pretty ? EscapeType.REPR_SQUOTES : EscapeType.ONLY_SQUOTES;
-                    auto finalContent = actualValue.content.escapeChar!finalEscapeType;
-                    return text(actualValue.isWide ? "L'" : "'", finalContent, "'");
-                case STRING:
-                    auto actualValue = value.get!PpcStringTokenValue;
-                    enum finalEscapeType = pretty ? EscapeType.REPR_DQUOTES : EscapeType.ONLY_DQUOTES;
-                    auto finalContent = actualValue.content.escape!finalEscapeType;
-                    return text(actualValue.isWide ? "L\"" : "\"", finalContent, "\"");
-                case LPAREN: .. case XOR_ASSIGN:
-                    enum ppcStart = LPAREN.asOriginalType;
-                    enum ppcEnd = XOR_ASSIGN.asOriginalType;
-                    static assert(is(OriginalType!PpcTokenType == int));
-                    static assert(ppcEnd-ppcStart+1 == operatorLexems.length);
-                    return operatorLexems[type.asOriginalType-ppcStart];
-                case SPACING: return " ";
-                case NEWLINE: return "\n";
+                case MACRO_PARAM: return format!"[MACRO_PARAM_%s]"(value.get!PpcParamTokenValue.id);
                 case ERROR: return "[ERROR]";
                 case EOF: return "[EOF]";
                 case HEADER_NAME: return "[HEADER_NAME]";
