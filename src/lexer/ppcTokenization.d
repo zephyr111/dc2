@@ -6,12 +6,54 @@ import std.range.primitives;
 import std.traits;
 import std.algorithm.comparison;
 import std.algorithm.searching;
-import std.ascii;
+import std.ascii : isAlpha, isAlphaNum, isDigit, isOctalDigit, isPunctuation;
 import std.typecons;
 import interfaces : IErrorHandler;
 import lexer.types;
 import utils;
 
+version(withUnicodeInput)
+    import std.uni : isWhite;
+else
+    import std.ascii : isWhite;
+
+
+// Allowed chars in universal character names
+// The allowed charset is implementation defined until the C11 standard
+// (see ISO/IEC 9899:201x)
+private bool isUCNchar(dchar c)
+{
+    version(withUnicodeInput)
+    {
+        if(c <= 0x7F)
+            return c.isAlphaNum;
+
+        if(c <= 0xFF)
+            return c.among(0xA8, 0xAA, 0xAD, 0xAF)
+                    || c >= 0xB2 && !c.among(0xB6, 0xBB, 0xBF, 0xD7, 0xF7);
+
+        if(c <= 0xFFFF)
+            return (c in iota(0x0100, 0x167F+1) || c in iota(0x1681, 0x180D+1)
+                        || c in iota(0x180F, 0x1FFF+1) || c in iota(0x200B, 0x200D+1)
+                        || c in iota(0x202A, 0x202E+1) || c in iota(0x203F, 0x2040+1)
+                        || c == 0x2054 || c in iota(0x2060, 0x206F+1)
+                        || c in iota(0x2070, 0x218F+1) || c in iota(0x2460, 0x24FF+1)
+                        || c in iota(0x2776, 0x2793+1) || c in iota(0x2C00, 0x2DFF+1)
+                        || c in iota(0x2E80, 0x2FFF+1) || c in iota(0x3004, 0x3007+1)
+                        || c in iota(0x3021, 0x302F+1) || c in iota(0x3031, 0x303F+1)
+                        || c in iota(0x3040, 0xD7FF+1) || c in iota(0xF900, 0xFD3D+1)
+                        || c in iota(0xFD40, 0xFDCF+1) || c in iota(0xFDF0, 0xFE44+1)
+                        || c in iota(0xFE47, 0xFFFD+1))
+                    && !(c in iota(0x0300, 0x036F+1) || c in iota(0x1DC0, 0x1DFF+1)
+                        || c in iota(0x20D0, 0x20FF+1) || c in iota(0xFE20, 0xFE2F+1));
+
+        return c < 0xF0000 && !(c & 0xFFFF).among(0xFFFE, 0xFFFF);
+    }
+    else
+    {
+        return false;
+    }
+}
 
 // May consume more char than requested
 // Perform a look-ahead parsing
@@ -184,7 +226,7 @@ struct PpcTokenization(Range)
     {
         auto first = _input.front;
 
-        if(!first.isAlpha && first != '_')
+        if(!first.isAlpha && !first.isUCNchar && first != '_')
             return Nullable!PpcToken();
 
         if(first == 'L' && _input.save.dropOne.startsWithAmong!(["\"", "'"]) >= 0)
@@ -195,7 +237,7 @@ struct PpcTokenization(Range)
         static auto acc = appender!(char[]);
         acc.clear();
 
-        _input.forwardUntil!(a => !a.isAlphaNum && a != '_')(acc);
+        _input.forwardUntil!(a => !a.isAlphaNum && a != '_' && !a.isUCNchar)(acc);
         auto lexem = acc.data;
 
         loc.length = _input.pos - loc.pos;

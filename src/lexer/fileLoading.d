@@ -109,7 +109,12 @@ final class FileManager
     private auto tokenizedLoad(string filename)
     {
         auto content = load(filename);
-        auto wideContent = content.byDchar;
+
+        version(withUnicodeInput)
+            auto wideContent = content.byDchar;
+        else
+            auto wideContent = content.byChar;
+
         return wideContent.trackLocation(filename)
                         .substituteTrigraph
                         .spliceLines
