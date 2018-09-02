@@ -193,16 +193,8 @@ struct StdTokenization(Range)
                 break;
 
             case PpcTokenType.LPAREN: .. case PpcTokenType.XOR_ASSIGN:
-                pragma(msg, "[OPTION] Improve the automatic matching between XxxTokenType enums");
-                // Assume a full match between enums
-                static assert(is(OriginalType!PpcTokenType == int));
-                static assert(is(OriginalType!StdTokenType == int));
-                enum ppcStart = PpcTokenType.LPAREN.asOriginalType;
-                enum stdStart = StdTokenType.LPAREN.asOriginalType;
-                enum ppcEnd = PpcTokenType.XOR_ASSIGN.asOriginalType;
-                enum stdEnd = StdTokenType.XOR_ASSIGN.asOriginalType;
-                static assert(ppcEnd-ppcStart == stdEnd-stdStart);
-                auto type = cast(StdTokenType)(stdStart + (first.type.asOriginalType - ppcStart));
+                auto type = first.type.convertEnum!(PpcTokenType, StdTokenType,
+                                                    "LPAREN", "XOR_ASSIGN");
                 _result = StdToken(type, first.location);
                 break;
 

@@ -812,7 +812,7 @@ private struct LookAhead(Range)
 // Transform an input range to a forward range by temporary 
 // saving elements into a shared local data structure
 // This enable look-ahead parsing (but may introduce a significant overhead)
-// The amount of silmutaneous saved ranges should be small to minimize overheads
+// The amount of simultaneous saved ranges should be small to minimize overheads
 auto lookAhead(Range)(Range input)
     if(isInputRange!Range)
 {
@@ -820,4 +820,21 @@ auto lookAhead(Range)(Range input)
 }
 
 alias LookAheadRange(Range) = LookAhead!Range;
+
+// Convert value of type SrcEnum to a DstEnum assuming that the contiguous 
+// range [start;end] of enum value in SrcEnum match with those of DstEnum
+DstEnum convertEnum(SrcEnum, DstEnum, string start, string end)(SrcEnum value)
+    if(isType!SrcEnum && !isAggregateType!SrcEnum
+        && isType!DstEnum && !isAggregateType!DstEnum)
+{
+    static assert(isIntegral!(OriginalType!SrcEnum));
+    static assert(isIntegral!(OriginalType!DstEnum));
+    static assert(is(OriginalType!SrcEnum == OriginalType!DstEnum));
+    enum lexerStart = mixin("SrcEnum." ~ start ~ ".asOriginalType");
+    enum parserStart = mixin("DstEnum." ~ start ~ ".asOriginalType");
+    enum lexerEnd = mixin("SrcEnum." ~ end ~ ".asOriginalType");
+    enum parserEnd = mixin("DstEnum." ~ end ~ ".asOriginalType");
+    static assert(lexerEnd-lexerStart == parserEnd-parserStart);
+    return cast(DstEnum)(parserStart + (value.asOriginalType - lexerStart));
+}
 

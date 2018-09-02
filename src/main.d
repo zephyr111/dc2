@@ -13,7 +13,7 @@ import std.file;
 import interfaces;
 import ErrorHandler;
 import lexer;
-import Parser;
+import parser;
 import SemanticAnalyser;
 
 
@@ -85,6 +85,7 @@ int main(string[] args)
             else
             {
                 // To be continued...
+                parser.go();
             }
         }
         catch(HaltException err)

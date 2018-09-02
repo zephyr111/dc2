@@ -9,9 +9,10 @@ interface ILexer
 {
     enum TokenType
     {
-        // Identifiers, types, enums and constants
-        IDENTIFIER, TYPE, ENUM_VALUE,
-        INTEGER, NUMBER, CHARACTER, STRING,
+        // Identifiers and constant literals
+        // Note: typenames and enums cannot be a part of the lexer since 
+        // it require information about previously parsed elements
+        IDENTIFIER, INTEGER, NUMBER, CHARACTER, STRING,
 
         // Keywords
         AUTO, BREAK, CASE, CHAR,
@@ -96,7 +97,7 @@ interface ILexer
     {
         TokenType type;
         TokenLocation location;
-        TokenValue lexem;
+        TokenValue value;
     }
 
     // Location in the source file (include digraph/trigraph and cesures)
