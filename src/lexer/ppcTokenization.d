@@ -5,6 +5,7 @@ import std.range;
 import std.range.primitives;
 import std.traits;
 import std.algorithm.comparison;
+import std.algorithm.iteration;
 import std.algorithm.searching;
 import std.ascii : isAlpha, isAlphaNum, isDigit, isOctalDigit, isPunctuation;
 import std.typecons;
@@ -71,14 +72,7 @@ struct PpcTokenization(Range)
             INCLUDE_FOUND,
         }
 
-        alias This = typeof(this);
-
-        Range _input;
-        LexingState _lexingState = LexingState.NEWLINE_FOUND;
-        IErrorHandler _errorHandler;
-        Nullable!PpcToken _result;
-
-        enum operatorLexems = [
+        enum operatorLexemsEnum = [
             "(", ")", "{", "}", "[", "]", ",", ";", ":", "?", "~", "+",
             "-", "*", "/", "%", "=", "<", ">", "!", "&", "|", "^", ".",
             "++", "--", "<<", ">>", "&&", "||", "<=", ">=", "==", "!=", "+=", 
@@ -86,7 +80,9 @@ struct PpcTokenization(Range)
             "#", "##", "<:", ":>", "<%", "%>", "%:", "%:%:",
         ];
 
-        enum operatorTokenTypes = [
+        enum operatorLexemLenEnum = operatorLexems.map!((string a) => a.length).array;
+
+        enum operatorTokenTypesEnum = [
             PpcTokenType.LPAREN, PpcTokenType.RPAREN, PpcTokenType.LCURL,
             PpcTokenType.RCURL, PpcTokenType.LBRACK, PpcTokenType.RBRACK,
             PpcTokenType.COMMA, PpcTokenType.SEMICOLON, PpcTokenType.COL,
@@ -107,6 +103,18 @@ struct PpcTokenization(Range)
         ];
 
         static assert(operatorLexems.length == operatorTokenTypes.length);
+
+        alias This = typeof(this);
+
+        Range _input;
+        LexingState _lexingState = LexingState.NEWLINE_FOUND;
+        IErrorHandler _errorHandler;
+        Nullable!PpcToken _result;
+
+        // Note: compilers badly optimize direct accesses to enums in pactice...
+        static immutable string[] operatorLexems = operatorLexemsEnum;
+        static immutable size_t[] operatorLexemLen = operatorLexemLenEnum;
+        static immutable PpcTokenType[] operatorTokenTypes = operatorTokenTypesEnum;
     }
 
 
@@ -328,14 +336,14 @@ struct PpcTokenization(Range)
 
         auto loc = TokenLocation(_input.filename, _input.line, _input.col, _input.pos, 0);
 
-        auto id = _input.startsWithAmong!operatorLexems;
+        auto id = _input.startsWithAmong!operatorLexemsEnum;
         if(id < 0)
             return Nullable!PpcToken();
 
-        _input.popFrontExactly(operatorLexems[id].length);
+        _input.popFrontExactly(operatorLexemLen[id]);
 
         loc.length = _input.pos - loc.pos;
-        enum concatId = operatorTokenTypes.countUntil!(a => a == PpcTokenType.TOKEN_CONCAT);
+        enum concatId = operatorTokenTypesEnum.countUntil!(a => a == PpcTokenType.TOKEN_CONCAT);
         if(id != concatId)
             return PpcToken(operatorTokenTypes[id], loc).nullable;
         auto value = PpcTokenValue(PpcConcatTokenValue([], false));
