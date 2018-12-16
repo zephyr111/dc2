@@ -89,7 +89,7 @@ enum PpcTokenType
     OP_LSHIFT, OP_RSHIFT, OP_AND, OP_OR,
     OP_LE, OP_LT, OP_GE, OP_GT, OP_NOT, OP_EQ, OP_NE,
     OP_BAND, OP_BOR, OP_BXOR, OP_BNOT,
-    OP_DOT,
+    OP_DOT, OP_ARROW,
 
     // Assignment operator
     ASSIGN, ADD_ASSIGN, SUB_ASSIGN, MUL_ASSIGN, DIV_ASSIGN, MOD_ASSIGN,
@@ -123,8 +123,8 @@ struct PpcToken
             "(", ")", "{", "}", "[", "]", ",", "...", ";", ":",
             "?", "++", "--", "+", "-", "*", "/", "%", "<<", ">>",
             "&&", "||", "<=", "<", ">=", ">", "!", "==", "!=", "&",
-            "|", "^", "~", ".", "=", "+=", "-=", "*=", "/=", "%=",
-            "<<=", ">>=", "&=", "|=", "^=",
+            "|", "^", "~", ".", "->", "=", "+=", "-=", "*=", "/=", 
+            "%=", "<<=", ">>=", "&=", "|=", "^=",
         ];
 
         with(PpcTokenType)

@@ -60,13 +60,6 @@ int main(string[] args)
     if(!badInputFiles.empty)
         return 1;
 
-    if(!preprocessorOnly)
-    {
-        stderr.writeln("error: full compilation is not yet suppoted");
-        stderr.writeln("note: use -E to run only the preprocessor");
-        return 1;
-    }
-
     foreach(filename ; existingInputFiles)
     {
         auto errorHandler = new ErrorHandler(filename);

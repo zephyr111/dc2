@@ -1,0 +1,149 @@
+translationUnit = externalDeclaration*;
+
+// Note: grammar fixed to be LL(k)
+// Warning: a declaration require at least one declarationSpecifier while a function definition does not
+externalDeclaration = declarator declaration* compoundStatement // functionDefinition
+                      | declarationSpecifier+ (
+                          SEMICOLON // declaration
+                          | declarator (
+                              declaration* compoundStatement // functionDefinition
+                              | (ASSIGN initializer)? (COMMA initDeclarator)* SEMICOLON // declaration
+                          )
+                      );
+
+declarationSpecifier = storageClassSpecifier | typeSpecifier | typeQualifier;
+storageClassSpecifier = AUTO | REGISTER | STATIC | EXTERN | TYPEDEF;
+typeSpecifier = VOID | CHAR | SHORT | INT | LONG | FLOAT | DOUBLE | SIGNED | UNSIGNED
+                  | structOrUnionSpecifier | enumSpecifier | TYPE_NAME;
+structOrUnionSpecifier = (STRUCT | UNION) (IDENTIFIER (LCURL structDeclaration+ RCURL)?
+                                                | LCURL structDeclaration+ RCURL);
+structDeclaration = specifierQualifier* structDeclaratorList SEMICOLON;
+specifierQualifier = typeSpecifier | typeQualifier;
+
+// Left-to-right
+structDeclaratorList = structDeclarator (COMMA structDeclarator)*;
+
+structDeclarator = declarator (COL constantExpression)? | COL constantExpression;
+declarator = pointer? directDeclarator;
+pointer = (OP_MUL typeQualifier*)+;
+typeQualifier = CONST | VOLATILE;
+
+// Left-to-right
+directDeclarator = (IDENTIFIER | LPAREN declarator RPAREN)
+                            (LBRACK constantExpression? RBRACK
+                            | LPAREN (parameterList | IDENTIFIER (COMMA IDENTIFIER)*) RPAREN)*;
+
+constantExpression = conditionalExpression;
+conditionalExpression = logicalOrExpression (QMARK compositeExpression COL conditionalExpression)?;
+
+// All left-to-right
+logicalOrExpression = logicalAndExpression (OP_OR logicalAndExpression)*;
+logicalAndExpression = inclusiveOrExpression (OP_AND inclusiveOrExpression)*;
+inclusiveOrExpression = exclusiveOrExpression (OP_BOR exclusiveOrExpression)*;
+exclusiveOrExpression = andExpression (OP_BXOR andExpression)*;
+andExpression = equalityExpression (OP_BAND equalityExpression)*;
+equalityExpression = relationalExpression ((OP_EQ | OP_NE) relationalExpression)*;
+relationalExpression = shiftExpression ((OP_LT | OP_GT | OP_LE | OP_GE) shiftExpression)*;
+shiftExpression = additiveExpression ((OP_LSHIFT | OP_RSHIFT) additiveExpression)*;
+additiveExpression = multiplicativeExpression ((OP_ADD | OP_SUB) multiplicativeExpression)*;
+multiplicativeExpression = castExpression ((OP_MUL | OP_DIV | OP_MOD) castExpression)*;
+
+// LL(1) CONFLICT: between unaryExpression and LPAREN (ok with LL(2))
+castExpression = unaryExpression | LPAREN typename RPAREN castExpression;
+
+// LL(1) CONFLICT: between unaryExpression and LPAREN (ok with LL(2))
+unaryExpression = postfixExpression
+                     | (OP_INC | OP_DEC) unaryExpression
+                     | unaryOperator castExpression
+                     | SIZEOF (unaryExpression | LPAREN typename RPAREN);
+
+// Right-to-left
+postfixExpression = primaryExpression (LBRACK compositeExpression RBRACK
+                                        | LPAREN compositeExpression? RPAREN
+                                        | OP_DOT IDENTIFIER
+                                        | OP_ARROW IDENTIFIER
+                                        | OP_INC
+                                        | OP_DEC)*;
+
+primaryExpression = IDENTIFIER | constant | STRING | LPAREN compositeExpression RPAREN;
+constant = INTEGER | CHARACTER | NUMBER | ENUM_VALUE;
+
+// Left-to-right
+compositeExpression = assignmentExpression (COMMA assignmentExpression)*;
+
+// Note: grammar fixed to be LL(k) as conditionalExpression and unaryExpression was conflicting on LPAREN
+// The expression as been replaced by one with conditionalExpression and a check of inheritance at runtime
+// assignmentExpression = conditionalExpression | unaryExpression assignmentOperator assignmentExpression;
+assignmentExpression = conditionalExpression (assignmentOperator assignmentExpression)?;
+
+assignmentOperator = ASSIGN | ADD_ASSIGN | SUB_ASSIGN | MUL_ASSIGN | DIV_ASSIGN | MOD_ASSIGN | LSHIFT_ASSIGN | RSHIFT_ASSIGN | AND_ASSIGN | OR_ASSIGN | XOR_ASSIGN;
+unaryOperator = OP_BAND | OP_MUL | OP_ADD | OP_SUB | OP_BNOT | OP_NOT;
+typename = specifierQualifier+ abstractDeclarator?;
+
+// Note: grammar fixed to be more clear
+// LL(1) CONFLICT with COMMA (ok with LL(2))
+parameterList = parameterDeclaration (COMMA parameterDeclaration)* (COMMA ELLIPSIS)?;
+
+// GLR CONFLICT: between declarator and abstractDeclarator on LPAREN..RPAREN
+// From ISO/IEC 9899:TC2, 6.7.5.3.11:
+// "If, in a parameter declaration, an identifier can be treated either as
+// a typedef name or as a parameter name, it shall be taken as a typedef name."
+parameterDeclaration = declarationSpecifier+ genericDeclarator?;
+
+// In theory: genericDeclarator = declarator | abstractDeclarator;
+// But here, genericDeclarator is an over-approximation: 
+// it accepts a wider set of tokens than expected after the rule genericDeclarator
+// This can be solve in the top-down parser using a bottom-up feedback
+genericDeclarator = pointer genericDirectDeclarator?
+                  | genericDirectDeclarator;
+genericDirectDeclarator = IDENTIFIER
+                            (LBRACK constantExpression? RBRACK | LPAREN (parameterList | IDENTIFIER (COMMA IDENTIFIER)*) RPAREN)* // directDeclarator
+                        | (LBRACK constantExpression? RBRACK)
+                            (LPAREN parameterList? RPAREN | LBRACK constantExpression? RBRACK)* // directAbstractDeclarator
+                        | (LPAREN (genericDeclarator | parameterList?) RPAREN)
+                            (LBRACK constantExpression? RBRACK | LPAREN (parameterList | IDENTIFIER (COMMA IDENTIFIER)*)? RPAREN)*; // mixed
+
+abstractDeclarator = pointer directAbstractDeclarator? | directAbstractDeclarator;
+
+// Right-to-left
+directAbstractDeclarator = (LPAREN (abstractDeclarator | parameterList?) RPAREN | LBRACK constantExpression? RBRACK)
+                                    (LPAREN parameterList? RPAREN | LBRACK constantExpression? RBRACK)*;
+
+enumSpecifier = ENUM (IDENTIFIER (LCURL enumeratorList RCURL)? | LCURL enumeratorList RCURL);
+
+// Left-to-right
+enumeratorList = enumerator (COMMA enumerator)*;
+
+enumerator = IDENTIFIER (ASSIGN constantExpression)?;
+declaration = declarationSpecifier+ (initDeclarator (COMMA initDeclarator)*)? SEMICOLON;
+initDeclarator = declarator (ASSIGN initializer)?;
+
+// Note: grammar fixed to be more clear
+initializer = assignmentExpression | initializerList;
+
+// Left-to-right
+initializerList = LCURL initializer (COMMA initializerList?)? RCURL;
+
+compoundStatement = LCURL declaration* statement* RCURL;
+
+// LL(1) CONFLICT: between labeledStatement and expressionStatement on IDENTIFIER (ok with LL(2))
+statement = labeledStatement
+              | expressionStatement
+              | compoundStatement
+              | selectionStatement
+              | iterationStatement
+              | jumpStatement;
+labeledStatement = IDENTIFIER COL statement
+                      | CASE constantExpression COL statement
+                      | DEFAULT COL statement;
+expressionStatement = compositeExpression? SEMICOLON;
+selectionStatement = IF LPAREN compositeExpression RPAREN statement (ELSE statement)?
+                        | SWITCH LPAREN compositeExpression RPAREN statement;
+iterationStatement = WHILE LPAREN compositeExpression RPAREN statement
+                        | DO statement WHILE LPAREN compositeExpression RPAREN SEMICOLON
+                        | FOR LPAREN compositeExpression? SEMICOLON compositeExpression? SEMICOLON compositeExpression? RPAREN statement;
+jumpStatement = GOTO IDENTIFIER SEMICOLON
+                   | CONTINUE SEMICOLON
+                   | BREAK SEMICOLON
+                   | RETURN compositeExpression? SEMICOLON;
+

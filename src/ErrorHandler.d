@@ -40,6 +40,13 @@ class ErrorHandler : IErrorHandler
         }*/
     }
 
+    override void criticalError(string message, string filename, ulong line, ulong col, ulong sliceLength = 0)
+    {
+        stderr.writefln("%s:%d:%d: critical error: %s", filename, line, col, message);
+        _count++;
+        halt();
+    }
+
     override void missingFile(string filename)
     {
         stderr.writeln("critical error: cannot open file \"%s\"".format(filename));

@@ -45,7 +45,7 @@ interface ILexer
         OP_LE, OP_LT, OP_GE, OP_GT,
         OP_NOT, OP_EQ, OP_NE,
         OP_BAND, OP_BOR, OP_BXOR, OP_BNOT,
-        OP_DOT,
+        OP_DOT, OP_ARROW,
 
         // Assignment operator
         ASSIGN,
@@ -141,6 +141,7 @@ interface IErrorHandler
     // derived from IHaltException to stop the program
     void warning(string message, string filename, ulong line, ulong col, ulong sliceLength = 0);
     void error(string message, string filename, ulong line, ulong col, ulong sliceLength = 0);
+    void criticalError(string message, string filename, ulong line, ulong col, ulong sliceLength = 0);
     void missingFile(string filename);
     void handleHalt(HaltException err);
     void printReport();

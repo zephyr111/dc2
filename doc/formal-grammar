@@ -1,0 +1,116 @@
+translationUnit = externalDeclaration*;
+externalDeclaration = functionDefinition | declaration;
+
+functionDefinition = declarationSpecifier* declarator declaration* compoundStatement;
+declarationSpecifier = storageClassSpecifier | typeSpecifier | typeQualifier;
+storageClassSpecifier = AUTO | REGISTER | STATIC | EXTERN | TYPEDEF;
+typeSpecifier = VOID | CHAR | SHORT | INT | LONG | FLOAT | DOUBLE | SIGNED | UNSIGNED
+                  | structOrUnionSpecifier | enumSpecifier | TYPE;
+structOrUnionSpecifier = (STRUCT | UNION) (IDENTIFIER (LCURL structDeclaration+ RCURL)?
+                                                | LCURL structDeclaration+ RCURL);
+structDeclaration = specifierQualifier* structDeclaratorList SEMICOLON;
+specifierQualifier = typeSpecifier | typeQualifier;
+
+// Left-to-right
+structDeclaratorList = structDeclarator (COMMA structDeclarator)*;
+
+structDeclarator = declarator (COL constantExpression)? | COL constantExpression;
+declarator = pointer? directDeclarator;
+pointer = OP_MUL typeQualifier* pointer?;
+typeQualifier = CONST | VOLATILE;
+
+// Left-to-right
+directDeclarator = (IDENTIFIER | LPAREN declarator RPAREN)
+                            (LBRACK constantExpression? RBRACK
+                            | LPAREN (parameterTypeList | IDENTIFIER (COMMA IDENTIFIER)*) RPAREN)*;
+
+constantExpression = conditionalExpression;
+conditionalExpression = logicalOrExpression (QMARK compositeExpression COL conditionalExpression)?;
+
+// All left-to-right
+logicalOrExpression = logicalAndExpression (OP_OR logicalAndExpression)*;
+logicalAndExpression = inclusiveOrExpression (OP_AND inclusiveOrExpression)*;
+inclusiveOrExpression = exclusiveOrExpression (OP_BOR exclusiveOrExpression)*;
+exclusiveOrExpression = andExpression (OP_BXOR andExpression)*;
+andExpression = equalityExpression (OP_BAND equalityExpression)*;
+equalityExpression = relationalExpression ((OP_EQ | OP_NE) relationalExpression)*;
+relationalExpression = shiftExpression ((OP_LT | OP_GT | OP_LE | OP_GE) shiftExpression)*;
+shiftExpression = additiveExpression ((OP_LSHIFT | OP_RSHIFT) additiveExpression)*;
+additiveExpression = multiplicativeExpression ((OP_ADD | OP_SUB) multiplicativeExpression)*;
+multiplicativeExpression = castExpression ((OP_MUL | OP_DIV | OP_MOD) castExpression)*;
+castExpression = unaryExpression | LPAREN typename RPAREN castExpression;
+unaryExpression = postfixExpression
+                     | (OP_INC | OP_DEC) unaryExpression
+                     | unaryOperator castExpression
+                     | SIZEOF (unaryExpression | LPAREN typename RPAREN);
+
+// Right-to-left
+postfixExpression = primaryExpression (LBRACK compositeExpression RBRACK
+                                        | LPAREN compositeExpression? RPAREN
+                                        | OP_DOT IDENTIFIER
+                                        | OP_ARROW IDENTIFIER
+                                        | OP_INC
+                                        | OP_DEC)*;
+
+primaryExpression = IDENTIFIER | constant | STRING | LPAREN compositeExpression RPAREN;
+constant = INTEGER | CHARACTER | NUMBER | ENUMVALUE;
+
+// Left-to-right
+compositeExpression = assignmentExpression (COMMA assignmentExpression)*;
+
+assignmentExpression = conditionalExpression | unaryExpression assignmentOperator assignmentExpression;
+
+assignmentOperator = ASSIGN | ADD_ASSIGN | SUB_ASSIGN | MUL_ASSIGN | DIV_ASSIGN | MOD_ASSIGN | LSHIFT_ASSIGN | RSHIFT_ASSIGN | AND_ASSIGN | OR_ASSIGN | XOR_ASSIGN;
+unaryOperator = OP_BAND | OP_MUL | OP_ADD | OP_SUB | OP_BNOT | OP_NOT;
+typename = specifierQualifier+ abstractDeclarator?;
+parameterTypeList = parameterList (COMMA ELLIPSIS)?;
+
+// Left-to-right
+parameterList = parameterDeclaration (COMMA parameterDeclaration)*;
+
+// Conflict in the GLR between declarator and abstractDeclarator on LPAREN
+// From ISO/IEC 9899:TC2, 6.7.5.3.11:
+// "If, in a parameter declaration, an identifier can be treated either as
+// a typedef name or as a parameter name, it shall be taken as a typedef name."
+parameterDeclaration = declarationSpecifier+ (declarator | abstractDeclarator)?;
+
+abstractDeclarator = pointer directAbstractDeclarator? | directAbstractDeclarator;
+
+// Right-to-left
+directAbstractDeclarator = (LPAREN (abstractDeclarator | parameterTypeList?) RPAREN | LBRACK constantExpression? RBRACK)
+                                    (LPAREN parameterTypeList? RPAREN | LBRACK constantExpression? RBRACK)*;
+
+enumSpecifier = ENUM (IDENTIFIER (LCURL enumeratorList RCURL)? | LCURL enumeratorList RCURL);
+
+// Left-to-right
+enumeratorList = enumerator (COMMA enumerator)*;
+
+enumerator = IDENTIFIER (ASSIGN constantExpression)?;
+declaration = declarationSpecifier+ (initDeclarator (COMMA initDeclarator)*)? SEMICOLON;
+initDeclarator = declarator (ASSIGN initializer)?;
+initializer = assignmentExpression | LCURL initializerList COMMA? RCURL;
+
+// Left-to-right
+initializerList = initializer (COMMA initializer)*;
+
+compoundStatement = LCURL declaration* statement* RCURL;
+statement = labeledStatement
+              | expressionStatement
+              | compoundStatement
+              | selectionStatement
+              | iterationStatement
+              | jumpStatement;
+labeledStatement = IDENTIFIER COL statement
+                      | CASE constantExpression COL statement
+                      | DEFAULT COL statement;
+expressionStatement = compositeExpression? SEMICOLON;
+selectionStatement = IF LPAREN compositeExpression RPAREN statement (ELSE statement)?
+                        | SWITCH LPAREN compositeExpression RPAREN statement;
+iterationStatement = WHILE LPAREN compositeExpression RPAREN statement
+                        | DO statement WHILE LPAREN compositeExpression RPAREN SEMICOLON
+                        | FOR LPAREN compositeExpression? SEMICOLON compositeExpression? SEMICOLON compositeExpression? RPAREN statement;
+jumpStatement = GOTO IDENTIFIER SEMICOLON
+                   | CONTINUE SEMICOLON
+                   | BREAK SEMICOLON
+                   | RETURN compositeExpression? SEMICOLON;
+

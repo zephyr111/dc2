@@ -615,7 +615,7 @@ struct CircularQueue(T)
 }
 
 // See lookAhead function
-private struct LookAhead(Range)
+struct LookAhead(Range)
 {
     private
     {

@@ -79,7 +79,7 @@ struct PpcTokenization(Range)
 
         enum operatorLexemsEnum = [
             "(", ")", "{", "}", "[", "]", ",", ";", ":", "?", "~", "+",
-            "-", "*", "/", "%", "=", "<", ">", "!", "&", "|", "^", ".",
+            "-", "*", "/", "%", "=", "<", ">", "!", "&", "|", "^", ".", "->",
             "++", "--", "<<", ">>", "&&", "||", "<=", ">=", "==", "!=", "+=", 
             "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<=", ">>=", "...",
             "#", "##", "<:", ":>", "<%", "%>", "%:", "%:%:",
@@ -96,15 +96,16 @@ struct PpcTokenization(Range)
             PpcTokenType.OP_MOD, PpcTokenType.ASSIGN, PpcTokenType.OP_LT,
             PpcTokenType.OP_GT, PpcTokenType.OP_NOT, PpcTokenType.OP_BAND,
             PpcTokenType.OP_BOR, PpcTokenType.OP_BXOR, PpcTokenType.OP_DOT,
-            PpcTokenType.OP_INC, PpcTokenType.OP_DEC, PpcTokenType.OP_LSHIFT,
-            PpcTokenType.OP_RSHIFT, PpcTokenType.OP_AND, PpcTokenType.OP_OR,
-            PpcTokenType.OP_LE, PpcTokenType.OP_GE, PpcTokenType.OP_EQ,
-            PpcTokenType.OP_NE, PpcTokenType.ADD_ASSIGN, PpcTokenType.SUB_ASSIGN,
-            PpcTokenType.MUL_ASSIGN, PpcTokenType.DIV_ASSIGN, PpcTokenType.MOD_ASSIGN,
-            PpcTokenType.AND_ASSIGN, PpcTokenType.OR_ASSIGN, PpcTokenType.XOR_ASSIGN,
-            PpcTokenType.LSHIFT_ASSIGN, PpcTokenType.RSHIFT_ASSIGN, PpcTokenType.ELLIPSIS,
-            PpcTokenType.SHARP, PpcTokenType.TOKEN_CONCAT, PpcTokenType.LBRACK, PpcTokenType.RBRACK,
-            PpcTokenType.LCURL, PpcTokenType.RCURL, PpcTokenType.SHARP, PpcTokenType.TOKEN_CONCAT,
+            PpcTokenType.OP_ARROW, PpcTokenType.OP_INC, PpcTokenType.OP_DEC,
+            PpcTokenType.OP_LSHIFT, PpcTokenType.OP_RSHIFT, PpcTokenType.OP_AND,
+            PpcTokenType.OP_OR, PpcTokenType.OP_LE, PpcTokenType.OP_GE,
+            PpcTokenType.OP_EQ, PpcTokenType.OP_NE, PpcTokenType.ADD_ASSIGN,
+            PpcTokenType.SUB_ASSIGN, PpcTokenType.MUL_ASSIGN, PpcTokenType.DIV_ASSIGN,
+            PpcTokenType.MOD_ASSIGN, PpcTokenType.AND_ASSIGN, PpcTokenType.OR_ASSIGN,
+            PpcTokenType.XOR_ASSIGN, PpcTokenType.LSHIFT_ASSIGN, PpcTokenType.RSHIFT_ASSIGN,
+            PpcTokenType.ELLIPSIS, PpcTokenType.SHARP, PpcTokenType.TOKEN_CONCAT,
+            PpcTokenType.LBRACK, PpcTokenType.RBRACK, PpcTokenType.LCURL,
+            PpcTokenType.RCURL, PpcTokenType.SHARP, PpcTokenType.TOKEN_CONCAT,
         ];
 
         static assert(operatorLexems.length == operatorTokenTypes.length);

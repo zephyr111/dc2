@@ -5,6 +5,7 @@
 
 module parser.types;
 
+import std.string;
 import std.conv;
 import std.traits;
 import std.algorithm.comparison;
@@ -35,7 +36,7 @@ enum ParserTokenType
 {
     // Identifiers, typenames, enums and constant literals
     IDENTIFIER, TYPE_NAME, ENUM_VALUE,
-    NUMBER, CHARACTER, STRING,
+    INTEGER, NUMBER, CHARACTER, STRING,
 
     // Keywords
     AUTO, BREAK, CASE, CHAR,
@@ -63,7 +64,7 @@ enum ParserTokenType
     OP_LE, OP_LT, OP_GE, OP_GT,
     OP_NOT, OP_EQ, OP_NE,
     OP_BAND, OP_BOR, OP_BXOR, OP_BNOT,
-    OP_DOT,
+    OP_DOT, OP_ARROW,
 
     // Assignment operator
     ASSIGN,
@@ -97,37 +98,35 @@ struct ParserToken
             "(", ")", "{", "}", "[", "]", ",", "...", ";", ":",
             "?", "++", "--", "+", "-", "*", "/", "%", "<<", ">>",
             "&&", "||", "<=", "<", ">=", ">", "!", "==", "!=", "&",
-            "|", "^", "~", ".", "=", "+=", "-=", "*=", "/=", "%=",
-            "<<=", ">>=", "&=", "|=", "^=",
+            "|", "^", "~", ".", "->", "=", "+=", "-=", "*=", "/=", 
+            "%=", "<<=", ">>=", "&=", "|=", "^=",
         ];
 
         with(ParserTokenType)
         {
-            enum ppcStart = LPAREN.asOriginalType;
-            enum ppcEnd = XOR_ASSIGN.asOriginalType;
-            static assert(is(OriginalType!PpcTokenType == int));
-            static assert(ppcEnd-ppcStart+1 == operatorLexems.length);
+            enum opStart = LPAREN.asOriginalType;
+            enum opEnd = XOR_ASSIGN.asOriginalType;
+            static assert(is(OriginalType!ParserTokenType == int));
+            static assert(opEnd-opStart+1 == operatorLexems.length);
 
-            if(type == SPACING)
-                return " ";
-            else if(type == IDENTIFIER)
-                return value.get!PpcIdentifierTokenValue.name;
-            else if(type >= ppcStart && type <= ppcEnd)
-                return operatorLexems[type.asOriginalType-ppcStart];
+            if(type == IDENTIFIER)
+                return value.get!ParserIdentifierTokenValue.name;
+            else if(type >= opStart && type <= opEnd)
+                return operatorLexems[type.asOriginalType-opStart];
             else if(type == NUMBER)
-                return value.get!PpcNumberTokenValue.content;
-            else if(type == NEWLINE)
-                return "\n";
+                return value.get!ParserNumberTokenValue.content.to!string;
+            else if(type == INTEGER)
+                return value.get!ParserIntegerTokenValue.content.to!string;
             else if(type == STRING)
             {
-                auto actualValue = value.get!PpcStringTokenValue;
+                auto actualValue = value.get!ParserStringTokenValue;
                 enum finalEscapeType = pretty ? EscapeType.REPR_DQUOTES : EscapeType.ONLY_DQUOTES;
                 auto finalContent = actualValue.content.escape!finalEscapeType;
                 return text(actualValue.isWide ? "L\"" : "\"", finalContent, "\"");
             }
             else if(type == CHARACTER)
             {
-                auto actualValue = value.get!PpcCharTokenValue;
+                auto actualValue = value.get!ParserCharTokenValue;
                 enum finalEscapeType = pretty ? EscapeType.REPR_SQUOTES : EscapeType.ONLY_SQUOTES;
                 auto finalContent = actualValue.content.escapeChar!finalEscapeType;
                 return text(actualValue.isWide ? "L'" : "'", finalContent, "'");
@@ -136,9 +135,10 @@ struct ParserToken
             // Other unlikely cases
             switch(type)
             {
+                case AUTO: .. case WHILE: return type.to!string.toLower;
                 case ERROR: return "[ERROR]";
                 case EOF: return "[EOF]";
-                default: throw new SwitchError("Programming error");
+                default: throw new SwitchError(format!"Programming error (unsupported type: %s)"(type));
             }
         }
     }
