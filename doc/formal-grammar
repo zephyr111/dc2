@@ -22,7 +22,7 @@ typeQualifier = CONST | VOLATILE;
 // Left-to-right
 directDeclarator = (IDENTIFIER | LPAREN declarator RPAREN)
                             (LBRACK constantExpression? RBRACK
-                            | LPAREN (parameterTypeList | IDENTIFIER (COMMA IDENTIFIER)*) RPAREN)*;
+                            | LPAREN (parameterTypeList | (IDENTIFIER (COMMA IDENTIFIER)*)?) RPAREN)*;
 
 constantExpression = conditionalExpression;
 conditionalExpression = logicalOrExpression (QMARK compositeExpression COL conditionalExpression)?;

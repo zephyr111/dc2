@@ -29,9 +29,10 @@ pointer = (OP_MUL typeQualifier*)+;
 typeQualifier = CONST | VOLATILE;
 
 // Left-to-right
+// Warning: the identifier can also be a type (shadowing)
 directDeclarator = (IDENTIFIER | LPAREN declarator RPAREN)
                             (LBRACK constantExpression? RBRACK
-                            | LPAREN (parameterList | IDENTIFIER (COMMA IDENTIFIER)*) RPAREN)*;
+                            | LPAREN (parameterList | (IDENTIFIER (COMMA IDENTIFIER)*)?) RPAREN)*;
 
 constantExpression = conditionalExpression;
 conditionalExpression = logicalOrExpression (QMARK compositeExpression COL conditionalExpression)?;

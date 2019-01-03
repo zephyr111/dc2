@@ -724,6 +724,10 @@ class Parser : IParser, IGo
 
                         declElems ~= new DirectDeclaratorUntypedParams(args.data, toAstLoc(startLoc, loc));
                     }
+                    else
+                    {
+                        declElems ~= new DirectDeclaratorUntypedParams([], toAstLoc(startLoc, loc));
+                    }
 
                     if(!condSkip!RPAREN(loc))
                         unexpected("`)`", loc);
@@ -1018,7 +1022,7 @@ class Parser : IParser, IGo
                     //return new EnumExpression(val.isDouble, val.content, toAstLoc(startLoc, loc));
                     assert(false);
 
-                case RPAREN:
+                case LPAREN:
                     skip(loc);
                     auto expr = parseCompositeExpression(loc);
                     if(!condSkip!RPAREN(loc))
