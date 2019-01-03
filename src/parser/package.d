@@ -8,6 +8,7 @@ module parser;
 import std.stdio;
 import std.range.primitives;
 import std.algorithm.comparison;
+import std.algorithm.searching;
 import std.algorithm.iteration;
 import std.array;
 import std.typecons;
@@ -95,11 +96,13 @@ private struct TypedLexerRange(Range)
     private
     {
         alias This = typeof(this);
+        static immutable string[] builtinTypes = ["__builtin_va_list"];
 
         Range _input;
         ParserTokenType[string][] _types; // stack of scoped types
         int _scopeLevel;
         CircularQueue!LexerToken _lookAhead;
+        bool _withLookup = true;
     }
 
 
@@ -107,11 +110,6 @@ private struct TypedLexerRange(Range)
     {
         _input = input;
         _scopeLevel = 0; // global scope
-    }
-
-    ~this()
-    {
-        assert(_scopeLevel == 0);
     }
 
     // Tag the beginning of a function (for local types)
@@ -125,8 +123,18 @@ private struct TypedLexerRange(Range)
     {
         assert(_scopeLevel > 0);
         if(_types.length > _scopeLevel)
-            _types[_scopeLevel-1].clear();
+            _types[_scopeLevel].clear();
         _scopeLevel--;
+    }
+
+    void enableLookup()
+    {
+        _withLookup = true;
+    }
+
+    void disableLookup()
+    {
+        _withLookup = false;
     }
 
     void addTypeName(string name)
@@ -137,6 +145,14 @@ private struct TypedLexerRange(Range)
         _types[_scopeLevel][name] = ParserTokenType.TYPE_NAME;
     }
 
+    void addVariable(string name)
+    {
+        if(_types.length < _scopeLevel+1)
+            _types.length = _scopeLevel+1;
+
+        _types[_scopeLevel][name] = ParserTokenType.IDENTIFIER;
+    }
+
     void addEnum(string name)
     {
         if(_types.length < _scopeLevel+1)
@@ -145,18 +161,30 @@ private struct TypedLexerRange(Range)
         _types[_scopeLevel][name] = ParserTokenType.ENUM_VALUE;
     }
 
-    bool exists(string name)
+    Nullable!ParserTokenType exists(string name)
     {
-        foreach(int i ; 0..min(_types.length, _scopeLevel))
-            if(name in _types[i])
-                return true;
+        foreach_reverse(int i ; 0..min(_types.length, _scopeLevel))
+        {
+            auto res = name in _types[i];
 
-        return false;
+            if(res !is null)
+                return Nullable!ParserTokenType(*res);
+        }
+
+        return Nullable!ParserTokenType();
     }
 
-    bool existsInScope(string name)
+    Nullable!ParserTokenType existsInScope(string name)
     {
-        return _types.length > _scopeLevel && name in _types[_scopeLevel];
+        if(_types.length <= _scopeLevel)
+            return Nullable!ParserTokenType();
+
+        auto res = name in _types[_scopeLevel];
+
+        if(res is null)
+            return Nullable!ParserTokenType();
+
+        return Nullable!ParserTokenType(*res);
     }
 
     @property bool empty()
@@ -168,14 +196,20 @@ private struct TypedLexerRange(Range)
     {
         if(token.type == LexerTokenType.IDENTIFIER)
         {
-            auto identifier = token.value.get!LexerIdentifierTokenValue.name;
-
-            foreach(int i ; 0..min(_types.length, _scopeLevel))
+            if(_withLookup)
             {
-                auto type = identifier in _types[i];
+                auto identifier = token.value.get!LexerIdentifierTokenValue.name;
 
-                if(type !is null)
-                    return ParserToken(*type, token.location, token.value);
+                foreach_reverse(int i ; 0..min(_types.length, _scopeLevel+1))
+                {
+                    auto type = identifier in _types[i];
+
+                    if(type !is null)
+                        return ParserToken(*type, token.location, token.value);
+                }
+
+                if(builtinTypes.canFind(identifier))
+                    return ParserToken(ParserTokenType.TYPE_NAME, token.location, token.value);
             }
 
             return ParserToken(ParserTokenType.IDENTIFIER, token.location, token.value);
@@ -252,6 +286,7 @@ private struct TypedLexerRange(Range)
 //   the one that end the rule are expected (eg. ';' for statements).
 pragma(msg, "[FIXME] Check conflicts (LR vs RL)");
 pragma(msg, "[FIXME] Check associativity: left to right vs right to left eval (use reverse ?)");
+pragma(msg, "[FIXME] Check that the identifier lookup enabling/disabling are put on the good position");
 pragma(msg, "[FIXME] Bad error location at the end of the file due to a missing EOF token");
 pragma(msg, "[FIXME] Errors should expect rules rather than token subsets (add checks before parsing subrules)");
 pragma(msg, "[FIXME] Update the parser range when a declaration is found (typedef, shadow var def, etc.)");
@@ -260,9 +295,12 @@ class Parser : IParser, IGo
 {
     private
     {
-        alias ParserRange = TypedLexerRange!(LookAhead!LexerRange);
+        alias ParserRange = TypedLexerRange!LexerRange;
         alias GenericDeclarator = Algebraic!(Declarator, AbstractDeclarator);
         alias GenericDirectDeclarator = Algebraic!(DirectDeclarator, DirectAbstractDeclarator);
+
+        enum primitiveTypeSpecCount = cast(int)PrimitiveTypeSpecifierEnum.max-cast(int)PrimitiveTypeSpecifierEnum.min+1;
+        static assert(PrimitiveTypeSpecifierEnum.min == 0);
 
         ParserRange _lexer;
         IErrorHandler _errorHandler;
@@ -272,7 +310,7 @@ class Parser : IParser, IGo
 
     this(ILexer lexer, IErrorHandler errorHandler)
     {
-        _lexer = ParserRange(lookAhead(LexerRange(lexer)));
+        _lexer = ParserRange(LexerRange(lexer));
         _errorHandler = errorHandler;
     }
 
@@ -280,6 +318,14 @@ class Parser : IParser, IGo
     /******************** GENERIC PARSING FUNCTIONS ********************/
 
     void fail(string msg, ParserTokenLocation loc = ParserTokenLocation())
+    {
+        // Skip remaining tokens for the lexical analysis to check further errors
+        _lexer.walkLength;
+
+        _errorHandler.criticalError(msg, loc.filename, loc.line, loc.col, loc.length);
+    }
+
+    void fail(string msg, AstNodeLocation loc)
     {
         // Skip remaining tokens for the lexical analysis to check further errors
         _lexer.walkLength;
@@ -332,24 +378,129 @@ class Parser : IParser, IGo
         return _lexer.lookAhead(1);
     }
 
+    bool hasSpecifier(T)(T[] specifiers)
+    {
+        return specifiers.any!(e => cast(StorageClassSpecifier)e !is null);
+    }
+
+    bool hasSpecifier(T)(T[] specifiers, StorageClassSpecifierEnum toFind)
+    {
+        foreach(spec ; specifiers)
+        {
+            auto tmp = cast(StorageClassSpecifier)spec;
+
+            with(StorageClassSpecifierEnum)
+                if(tmp !is null && tmp.value == toFind)
+                    return true;
+        }
+
+        return false;
+    }
+
+    bool hasTypedef(DeclarationSpecifier[] specifiers)
+    {
+        with(StorageClassSpecifierEnum)
+            return hasSpecifier(specifiers, TYPEDEF);
+    }
+
+    Identifier declaratorId(Declarator decl)
+    {
+        Declarator nextDecl = decl;
+
+        do
+        {
+            auto prefix = decl.declarator.prefix;
+            decl = nextDecl;
+            nextDecl = cast(Declarator)prefix;
+        }
+        while(nextDecl !is null);
+
+        assert(decl !is null);
+        auto declId = cast(DirectDeclaratorIdentifier)decl.declarator.prefix;
+
+        // Unnamed declarator
+        if(declId is null)
+            return null;
+
+        return declId.identifier;
+    }
+
+    void registerDeclarator(Declarator decl, bool isTypedefDecl)
+    {
+        auto id = declaratorId(decl);
+
+        if(id is null)
+            return;
+
+        auto kind = _lexer.existsInScope(id.name);
+
+        with(ParserTokenType)
+            if(!kind.isNull && !(isTypedefDecl && kind.get == TYPE_NAME)
+                    && !(!isTypedefDecl && kind.get == IDENTIFIER))
+                fail(format!"`%s` redeclared as different kind of symbol"(id.name), decl.location);
+
+        if(isTypedefDecl)
+            _lexer.addTypeName(id.name);
+        else
+            _lexer.addVariable(id.name);
+    }
+
+    void registerEnumerator(Enumerator enumValue)
+    {
+        _lexer.addEnum(enumValue.name.name);
+    }
+
+    // Check the correctness of a primitive type
+    // Take as input an array integer of indexed by PrimitiveTypeSpecifierEnum
+    void checkSpecifiers(int[primitiveTypeSpecCount] nTypes, ref ParserTokenLocation loc)
+    {
+        with(PrimitiveTypeSpecifierEnum)
+        {
+            // Checking the validity of C types looks like constraint programming...
+
+            foreach(i ; 0..primitiveTypeSpecCount)
+                if(nTypes[i] > 1)
+                    fail("two or more data types in declaration specifiers", loc);
+
+            if(nTypes[VOID]+nTypes[CHAR]+nTypes[INT]+nTypes[FLOAT]+nTypes[DOUBLE] > 1)
+                fail("two or more data types in declaration specifiers", loc);
+            else if(nTypes[SHORT] > 0 && nTypes[LONG] > 0)
+                fail("both `short` and `long` in declaration specifiers", loc);
+            else if(nTypes[SIGNED] > 0 && nTypes[UNSIGNED] > 0)
+                fail("both `signed` and `unsigned` in declaration specifiers", loc);
+            else if(nTypes[SIGNED]+nTypes[UNSIGNED] > 0 && nTypes[VOID]+nTypes[FLOAT]+nTypes[DOUBLE] > 0)
+                fail("invalid type (cannot be signed or unsigned)", loc);
+            else if(nTypes[SHORT] > 0 && nTypes[VOID]+nTypes[CHAR]+nTypes[FLOAT]+nTypes[DOUBLE] > 0)
+                fail("invalid type (cannot be short)", loc);
+            else if(nTypes[LONG] > 0 && nTypes[VOID]+nTypes[CHAR]+nTypes[FLOAT] > 0)
+                fail("invalid type (cannot be long)", loc);
+        }
+    }
+
 
     /******************** ACTUAL PARSING FUNCTIONS ********************/
 
-    // LL(1) token table generated by the analysis python script from the formal grammar
-    bool matchTranslationUnit(ParserToken token) { with(ParserTokenType) return token.type.among(SHORT, ENUM, CONST, UNSIGNED, TYPE_NAME, DOUBLE, EXTERN, STATIC, SIGNED, OP_MUL, AUTO, REGISTER, TYPEDEF, STRUCT, VOID, UNION, INT, FLOAT, IDENTIFIER, CHAR, LONG, LPAREN, VOLATILE) > 0; };
-    bool matchExternalDeclaration(ParserToken token) { with(ParserTokenType) return token.type.among(OP_MUL, SHORT, AUTO, REGISTER, ENUM, CONST, TYPEDEF, STRUCT, VOID, UNSIGNED, TYPE_NAME, UNION, INT, FLOAT, IDENTIFIER, CHAR, LONG, LPAREN, DOUBLE, EXTERN, VOLATILE, STATIC, SIGNED) > 0; };
+    // LL(1) token table generated by the analysis python script from the formal grammar.
+    // Warning: since TYPE_NAME/ENUM_VALUE tokens should sometime be read as
+    // IDENTIFIER tokens, TYPE_NAME/ENUM tokens are added to those functions.
+    // The modified rules are marked as @fixed, some of them (such as with 
+    // look-ahead) can cause conflits with others and are marked as @viral.
+    enum fixed;
+    enum viral;
+    @fixed bool matchTranslationUnit(ParserToken token) { with(ParserTokenType) return token.type.among(SHORT, ENUM, CONST, UNSIGNED, TYPE_NAME, DOUBLE, EXTERN, STATIC, SIGNED, OP_MUL, AUTO, REGISTER, TYPEDEF, STRUCT, VOID, UNION, INT, FLOAT, IDENTIFIER, CHAR, LONG, LPAREN, VOLATILE, ENUM_VALUE) > 0; };
+    @fixed bool matchExternalDeclaration(ParserToken token) { with(ParserTokenType) return token.type.among(OP_MUL, SHORT, AUTO, REGISTER, ENUM, CONST, TYPEDEF, STRUCT, VOID, UNSIGNED, TYPE_NAME, UNION, INT, FLOAT, IDENTIFIER, CHAR, LONG, LPAREN, DOUBLE, EXTERN, VOLATILE, STATIC, SIGNED, ENUM_VALUE) > 0; };
     bool matchDeclarationSpecifier(ParserToken token) { with(ParserTokenType) return token.type.among(SHORT, AUTO, REGISTER, ENUM, CONST, TYPEDEF, STRUCT, VOID, UNSIGNED, TYPE_NAME, UNION, INT, FLOAT, CHAR, LONG, DOUBLE, EXTERN, VOLATILE, STATIC, SIGNED) > 0; };
     bool matchStorageClassSpecifier(ParserToken token) { with(ParserTokenType) return token.type.among(TYPEDEF, EXTERN, AUTO, STATIC, REGISTER) > 0; };
     bool matchTypeSpecifier(ParserToken token) { with(ParserTokenType) return token.type.among(UNION, SHORT, INT, FLOAT, CHAR, LONG, ENUM, DOUBLE, STRUCT, VOID, UNSIGNED, SIGNED, TYPE_NAME) > 0; };
     bool matchStructOrUnionSpecifier(ParserToken token) { with(ParserTokenType) return token.type.among(UNION, STRUCT) > 0; };
-    bool matchStructDeclaration(ParserToken token) { with(ParserTokenType) return token.type.among(UNION, SHORT, INT, FLOAT, OP_MUL, COL, IDENTIFIER, CHAR, LONG, LPAREN, ENUM, DOUBLE, CONST, STRUCT, TYPE_NAME, VOID, UNSIGNED, SIGNED, VOLATILE) > 0; };
+    @fixed bool matchStructDeclaration(ParserToken token) { with(ParserTokenType) return token.type.among(UNION, SHORT, INT, FLOAT, OP_MUL, COL, IDENTIFIER, CHAR, LONG, LPAREN, ENUM, DOUBLE, CONST, STRUCT, TYPE_NAME, VOID, UNSIGNED, SIGNED, VOLATILE, ENUM_VALUE) > 0; };
     bool matchSpecifierQualifier(ParserToken token) { with(ParserTokenType) return token.type.among(UNION, SHORT, INT, FLOAT, CHAR, LONG, VOLATILE, ENUM, DOUBLE, CONST, STRUCT, VOID, UNSIGNED, SIGNED, TYPE_NAME) > 0; };
-    bool matchStructDeclaratorList(ParserToken token) { with(ParserTokenType) return token.type.among(OP_MUL, COL, LPAREN, IDENTIFIER) > 0; };
-    bool matchStructDeclarator(ParserToken token) { with(ParserTokenType) return token.type.among(OP_MUL, COL, LPAREN, IDENTIFIER) > 0; };
-    bool matchDeclarator(ParserToken token) { with(ParserTokenType) return token.type.among(OP_MUL, LPAREN, IDENTIFIER) > 0; };
+    @fixed bool matchStructDeclaratorList(ParserToken token) { with(ParserTokenType) return token.type.among(OP_MUL, COL, LPAREN, IDENTIFIER, TYPE_NAME, ENUM_VALUE) > 0; };
+    @fixed bool matchStructDeclarator(ParserToken token) { with(ParserTokenType) return token.type.among(OP_MUL, COL, LPAREN, IDENTIFIER, TYPE_NAME, ENUM_VALUE) > 0; };
+    @fixed bool matchDeclarator(ParserToken token) { with(ParserTokenType) return token.type.among(OP_MUL, LPAREN, IDENTIFIER, TYPE_NAME, ENUM_VALUE) > 0; };
     bool matchPointer(ParserToken token) { with(ParserTokenType) return token.type.among(OP_MUL) > 0; };
     bool matchTypeQualifier(ParserToken token) { with(ParserTokenType) return token.type.among(CONST, VOLATILE) > 0; };
-    bool matchDirectDeclarator(ParserToken token) { with(ParserTokenType) return token.type.among(LPAREN, IDENTIFIER) > 0; };
+    @fixed bool matchDirectDeclarator(ParserToken token) { with(ParserTokenType) return token.type.among(LPAREN, IDENTIFIER, TYPE_NAME, ENUM_VALUE) > 0; };
     bool matchConstantExpression(ParserToken token) { with(ParserTokenType) return token.type.among(OP_MUL, OP_NOT, OP_ADD, NUMBER, SIZEOF, OP_SUB, IDENTIFIER, INTEGER, CHARACTER, LPAREN, ENUM_VALUE, STRING, OP_BNOT, OP_DEC, OP_INC, OP_BAND) > 0; };
     bool matchConditionalExpression(ParserToken token) { with(ParserTokenType) return token.type.among(OP_MUL, OP_NOT, OP_ADD, NUMBER, SIZEOF, OP_SUB, IDENTIFIER, INTEGER, CHARACTER, LPAREN, ENUM_VALUE, STRING, OP_BNOT, OP_DEC, OP_INC, OP_BAND) > 0; };
     bool matchLogicalOrExpression(ParserToken token) { with(ParserTokenType) return token.type.among(OP_MUL, OP_NOT, OP_ADD, NUMBER, SIZEOF, OP_SUB, IDENTIFIER, INTEGER, CHARACTER, LPAREN, ENUM_VALUE, STRING, OP_BNOT, OP_DEC, OP_INC, OP_BAND) > 0; };
@@ -374,23 +525,24 @@ class Parser : IParser, IGo
     bool matchTypename(ParserToken token) { with(ParserTokenType) return token.type.among(UNION, SHORT, INT, FLOAT, VOID, CHAR, LONG, ENUM, DOUBLE, CONST, STRUCT, VOLATILE, UNSIGNED, SIGNED, TYPE_NAME) > 0; };
     bool matchParameterList(ParserToken token) { with(ParserTokenType) return token.type.among(UNION, SHORT, INT, FLOAT, AUTO, CHAR, REGISTER, LONG, ENUM, DOUBLE, CONST, VOLATILE, TYPEDEF, STRUCT, EXTERN, VOID, UNSIGNED, STATIC, SIGNED, TYPE_NAME) > 0; };
     bool matchParameterDeclaration(ParserToken token) { with(ParserTokenType) return token.type.among(UNION, SHORT, INT, FLOAT, AUTO, CHAR, REGISTER, LONG, ENUM, DOUBLE, CONST, VOLATILE, TYPEDEF, STRUCT, EXTERN, VOID, UNSIGNED, STATIC, SIGNED, TYPE_NAME) > 0; };
-    bool matchGenericDeclarator(ParserToken token) { with(ParserTokenType) return token.type.among(LBRACK, OP_MUL, LPAREN, IDENTIFIER) > 0; };
-    bool matchGenericDirectDeclarator(ParserToken token) { with(ParserTokenType) return token.type.among(LBRACK, LPAREN, IDENTIFIER) > 0; };
+    @fixed bool matchGenericDeclarator(ParserToken token) { with(ParserTokenType) return token.type.among(LBRACK, OP_MUL, LPAREN, IDENTIFIER, TYPE_NAME, ENUM_VALUE) > 0; };
+    @fixed bool matchGenericDirectDeclarator(ParserToken token) { with(ParserTokenType) return token.type.among(LBRACK, LPAREN, IDENTIFIER, TYPE_NAME, ENUM_VALUE) > 0; };
     bool matchAbstractDeclarator(ParserToken token) { with(ParserTokenType) return token.type.among(LBRACK, OP_MUL, LPAREN) > 0; };
     bool matchDirectAbstractDeclarator(ParserToken token) { with(ParserTokenType) return token.type.among(LBRACK, LPAREN) > 0; };
     bool matchEnumSpecifier(ParserToken token) { with(ParserTokenType) return token.type.among(ENUM) > 0; };
-    bool matchEnumerator(ParserToken token) { with(ParserTokenType) return token.type.among(IDENTIFIER) > 0; };
+    @fixed bool matchEnumerator(ParserToken token) { with(ParserTokenType) return token.type.among(IDENTIFIER, ENUM_VALUE, TYPE_NAME) > 0; };
     bool matchDeclaration(ParserToken token) { with(ParserTokenType) return token.type.among(UNION, SHORT, INT, FLOAT, AUTO, CHAR, REGISTER, LONG, ENUM, DOUBLE, CONST, VOLATILE, TYPEDEF, STRUCT, EXTERN, VOID, UNSIGNED, STATIC, SIGNED, TYPE_NAME) > 0; };
-    bool matchInitDeclarator(ParserToken token) { with(ParserTokenType) return token.type.among(OP_MUL, LPAREN, IDENTIFIER) > 0; };
+    @fixed bool matchInitDeclarator(ParserToken token) { with(ParserTokenType) return token.type.among(OP_MUL, LPAREN, IDENTIFIER, TYPE_NAME, ENUM_VALUE) > 0; };
     bool matchInitializer(ParserToken token) { with(ParserTokenType) return token.type.among(OP_MUL, OP_NOT, LCURL, OP_ADD, NUMBER, SIZEOF, OP_SUB, IDENTIFIER, INTEGER, CHARACTER, LPAREN, ENUM_VALUE, STRING, OP_BNOT, OP_DEC, OP_INC, OP_BAND) > 0; };
     bool matchInitializerList(ParserToken token) { with(ParserTokenType) return token.type.among(LCURL) > 0; };
     bool matchCompoundStatement(ParserToken token) { with(ParserTokenType) return token.type.among(LCURL) > 0; };
-    bool matchStatement(ParserToken token) { with(ParserTokenType) return token.type.among(OP_MUL, OP_NOT, BREAK, CONTINUE, IF, OP_INC, LCURL, OP_ADD, NUMBER, GOTO, SIZEOF, FOR, SEMICOLON, WHILE, OP_SUB, SWITCH, DEFAULT, DO, IDENTIFIER, INTEGER, CHARACTER, LPAREN, RETURN, ENUM_VALUE, STRING, OP_BNOT, OP_DEC, CASE, OP_BAND) > 0; };
-    bool matchLabeledStatement(ParserToken token) { with(ParserTokenType) return token.type.among(CASE, DEFAULT, IDENTIFIER) > 0; };
+    @viral bool matchStatement(ParserToken token) { with(ParserTokenType) return token.type.among(OP_MUL, OP_NOT, BREAK, CONTINUE, IF, OP_INC, LCURL, OP_ADD, NUMBER, GOTO, SIZEOF, FOR, SEMICOLON, WHILE, OP_SUB, SWITCH, DEFAULT, DO, IDENTIFIER, INTEGER, CHARACTER, LPAREN, RETURN, ENUM_VALUE, STRING, OP_BNOT, OP_DEC, CASE, OP_BAND, TYPE_NAME) > 0; };
+    @viral bool matchLabeledStatement(ParserToken token) { with(ParserTokenType) return token.type.among(CASE, DEFAULT, IDENTIFIER, ENUM_VALUE, TYPE_NAME) > 0; };
     bool matchExpressionStatement(ParserToken token) { with(ParserTokenType) return token.type.among(OP_MUL, OP_NOT, IDENTIFIER, INTEGER, CHARACTER, LPAREN, OP_ADD, ENUM_VALUE, STRING, NUMBER, OP_BNOT, SIZEOF, OP_DEC, SEMICOLON, OP_INC, OP_SUB, OP_BAND) > 0; };
     bool matchSelectionStatement(ParserToken token) { with(ParserTokenType) return token.type.among(SWITCH, IF) > 0; };
     bool matchIterationStatement(ParserToken token) { with(ParserTokenType) return token.type.among(WHILE, DO, FOR) > 0; };
     bool matchJumpStatement(ParserToken token) { with(ParserTokenType) return token.type.among(CONTINUE, GOTO, BREAK, RETURN) > 0; };
+    bool matchPrimitiveType(ParserToken token) { with(ParserTokenType) return token.type.among(VOID, CHAR, SHORT, INT, LONG, FLOAT, DOUBLE, UNSIGNED, SIGNED) > 0; };
 
     override void go()
     {
@@ -420,14 +572,16 @@ class Parser : IParser, IGo
         with(ParserTokenType)
         {
             auto startLoc = loc;
-            auto specifiers = appender!(DeclarationSpecifier[])();
+            DeclarationSpecifier[] declSpecs;
 
-            while(matchDeclarationSpecifier(currTok))
-                specifiers ~= parseDeclarationSpecifier(loc);
+            if(matchDeclarationSpecifier(currTok))
+                declSpecs = parseDeclarationSpecifiers(loc);
 
-            if(!specifiers.data.empty && condSkip!SEMICOLON(loc))
-                return new Declaration(specifiers.data, [], toAstLoc(startLoc, loc));
+            // Note: nothing to register for unnamed declarations
+            if(!declSpecs.empty && condSkip!SEMICOLON(loc))
+                return new Declaration(declSpecs, [], toAstLoc(startLoc, loc));
 
+            const bool isTypedefDecl = hasTypedef(declSpecs);
             auto declarator = parseDeclarator(loc);
 
             if(currTok.type.among(ASSIGN, COMMA, SEMICOLON))
@@ -438,48 +592,144 @@ class Parser : IParser, IGo
                 if(condSkip!ASSIGN(loc))
                     initializer = parseInitializer(loc);
 
-                initDecls ~= new InitDeclarator(declarator, initializer, toAstLoc(startLoc, loc));
+                auto decl = new InitDeclarator(declarator, initializer, toAstLoc(startLoc, loc));
+                registerDeclarator(decl.declarator, isTypedefDecl);
+                initDecls ~= decl;
 
                 while(condSkip!COMMA(loc))
-                    initDecls ~= parseInitDeclarator(loc);
+                {
+                    decl = parseInitDeclarator(loc);
+                    registerDeclarator(decl.declarator, isTypedefDecl);
+                    initDecls ~= decl;
+                }
 
                 if(!condSkip!SEMICOLON(loc))
                     unexpected("`;`", loc);
 
-                return new Declaration(specifiers.data, initDecls.data, toAstLoc(startLoc, loc));
+                return new Declaration(declSpecs, initDecls.data, toAstLoc(startLoc, loc));
             }
             else if(matchDeclaration(currTok) || matchCompoundStatement(currTok))
             {
+                auto funcDecl = declarator.declarator;
                 auto declarations = appender!(Declaration[])();
 
-                while(matchDeclaration(currTok))
-                    declarations ~= parseDeclaration(loc);
+                // Since the C grammar is very permissive on declarations,
+                // additional checks are required
 
-                auto statement = parseCompoundStatement(loc);
-                return new FunctionDefinition(specifiers.data, declarator, declarations.data, 
+                if(funcDecl.elements.length == 0)
+                    unexpected("`;` or function parameter list", startLoc);
+
+                pragma(msg, "[FIXME] check how to parse this properly and add checks (choose the first or the last element?)");
+                //if(declarator.pointer !is null)
+                //    fail("malformed function definition", startLoc);
+
+                if(funcDecl.elements.length > 0
+                        && cast(DirectDeclaratorArray)funcDecl.elements[0] !is null)
+                    unexpected("`;`", startLoc);
+
+                if(funcDecl.elements.length != 1)
+                    fail("malformed function definition", startLoc);
+
+                auto newStyleDecl = cast(DirectDeclaratorTypedParams)funcDecl.elements[0];
+                auto oldStyleDecl = cast(DirectDeclaratorUntypedParams)funcDecl.elements[0];
+
+                // The scope is manually controled put the parameter 
+                // declarations into the scope of the function body
+                _lexer.beginScope();
+
+                if(matchDeclaration(currTok))
+                {
+                    if(newStyleDecl)
+                        fail("old-style parameter declarations in prototyped function definition", loc);
+
+                    do
+                        declarations ~= parseDeclaration(loc);
+                    while(matchDeclaration(currTok));
+                }
+
+                // Inject parameter declarations in the current scope
+                if(newStyleDecl)
+                {
+                    foreach(arg ; newStyleDecl.args.args)
+                    {
+                        auto concreteDecl = cast(ConcreteParameterDeclaration)arg;
+                        auto abstractDecl = cast(AbstractParameterDeclaration)arg;
+                        assert(concreteDecl !is null || abstractDecl !is null);
+
+                        if(concreteDecl !is null && concreteDecl.declarator !is null)
+                            registerDeclarator(concreteDecl.declarator, false);
+                        else if(abstractDecl !is null && abstractDecl.declarator !is null)
+                            assert(false);// TODO: possible ???
+                        pragma(msg, "[FIXME] Support abstract declarator (if really needed)");
+                    }
+                }
+
+                auto statement = parseCompoundStatement(loc, false);
+
+                _lexer.endScope();
+
+                return new FunctionDefinition(declSpecs, declarator, declarations.data, 
                                                 statement, toAstLoc(startLoc, loc));
             }
 
-            unexpected("declaration or function definition", loc);
+            unexpected("declaration or function body", loc);
             assert(false);
         }
     }
 
-    DeclarationSpecifier parseDeclarationSpecifier(ref ParserTokenLocation loc)
+    // Parse multiple declaration specifiers at once.
+    // The parsing should not be as greedy as the grammar since
+    // declarations can contain types as variable names (shadowing)
+    DeclarationSpecifier[] parseDeclarationSpecifiers(ref ParserTokenLocation loc)
     {
         auto startLoc = loc;
+        auto declSpecs = appender!(DeclarationSpecifier[])();
+        bool storageClassSpecFound = false;
+        bool isPrimitiveType = false;
+        bool isUserType = false;
+        int[primitiveTypeSpecCount] nTypes = 0;
 
-        if(matchStorageClassSpecifier(currTok))
-            return parseStorageClassSpecifier(loc);
+        pragma(msg, "[FIXME] Add type checking in the semantics (eg. auto in global scope, duplicated qualifiers)");
 
-        if(matchTypeSpecifier(currTok))
-            return parseTypeSpecifier(loc);
+        do
+        {
+            if(matchStorageClassSpecifier(currTok))
+            {
+                if(storageClassSpecFound)
+                    fail("multiple storage class specifier", startLoc);
 
-        if(matchTypeQualifier(currTok))
-            return parseTypeQualifier(loc);
+                declSpecs ~= parseStorageClassSpecifier(loc);
+                storageClassSpecFound = true;
+            }
+            else if(matchTypeSpecifier(currTok))
+            {
+                if(isUserType || isPrimitiveType && !matchPrimitiveType(currTok))
+                    break;
 
-        unexpected("declaration specifier", loc);
-        assert(false);
+                auto spec = parseTypeSpecifier(loc);
+                auto primitiveSpec = cast(PrimitiveTypeSpecifier)spec;
+
+                if(primitiveSpec !is null)
+                    nTypes[primitiveSpec.value]++;
+
+                isPrimitiveType |= primitiveSpec !is null;
+                isUserType |= primitiveSpec is null;
+                declSpecs ~= spec;
+            }
+            else if(matchTypeQualifier(currTok))
+            {
+                declSpecs ~= parseTypeQualifier(loc);
+            }
+            else
+            {
+                unexpected("declaration specifier", loc);
+            }
+        }
+        while(matchDeclarationSpecifier(currTok));
+
+        checkSpecifiers(nTypes, startLoc);
+        assert((isPrimitiveType && isUserType) == false);
+        return declSpecs.data;
     }
 
     StorageClassSpecifier parseStorageClassSpecifier(ref ParserTokenLocation loc)
@@ -522,8 +772,12 @@ class Parser : IParser, IGo
             if(!isUnion && !condSkip!STRUCT(loc))
                 unexpected("struct or union keywords", loc);
 
+            _lexer.disableLookup();
+
             if(currTok.type == IDENTIFIER)
                 id = parseIdentifier(loc);
+
+            _lexer.enableLookup();
 
             if(condSkip!LCURL(loc))
             {
@@ -554,11 +808,11 @@ class Parser : IParser, IGo
         with(ParserTokenType)
         {
             auto startLoc = loc;
-            auto qualifiers = appender!(SpecifierQualifier[])();
+            SpecifierQualifier[] typeParts;
             auto declarators = appender!(StructDeclarator[]);
 
-            while(matchSpecifierQualifier(currTok))
-                qualifiers ~= parseSpecifierQualifier(loc);
+            if(matchSpecifierQualifier(currTok))
+                typeParts = parseSpecifierQualifiers(loc);
 
             do
                 declarators ~= parseStructDeclarator(loc);
@@ -567,19 +821,50 @@ class Parser : IParser, IGo
             if(!condSkip!SEMICOLON(loc))
                 unexpected("`;`", loc);
 
-            return new StructDeclaration(qualifiers.data, declarators.data, toAstLoc(startLoc, loc));
+            return new StructDeclaration(typeParts, declarators.data, toAstLoc(startLoc, loc));
         }
     }
 
-    SpecifierQualifier parseSpecifierQualifier(ref ParserTokenLocation loc)
+    // Parse multiple specifier-qualifiers at once.
+    // See parseDeclarationSpecifiers for more information.
+    SpecifierQualifier[] parseSpecifierQualifiers(ref ParserTokenLocation loc)
     {
-        if(matchTypeSpecifier(currTok))
-            return parseTypeSpecifier(loc);
-        else if(matchTypeQualifier(currTok))
-            return parseTypeQualifier(loc);
+        auto startLoc = loc;
+        auto specQualifiers = appender!(SpecifierQualifier[])();
+        bool isPrimitiveType = false;
+        bool isUserType = false;
+        int[primitiveTypeSpecCount] nTypes = 0;
 
-        unexpected("specifier qualifier", loc);
-        assert(false);
+        if(!matchSpecifierQualifier(currTok))
+            unexpected("specifier qualifier", loc);
+
+        do
+        {
+            if(matchTypeSpecifier(currTok))
+            {
+                if(isUserType || isPrimitiveType && !matchPrimitiveType(currTok))
+                    break;
+
+                auto spec = parseTypeSpecifier(loc);
+                auto primitiveSpec = cast(PrimitiveTypeSpecifier)spec;
+
+                if(primitiveSpec !is null)
+                    nTypes[primitiveSpec.value]++;
+
+                isPrimitiveType |= primitiveSpec !is null;
+                isUserType |= primitiveSpec is null;
+                specQualifiers ~= spec;
+            }
+            else if(matchTypeQualifier(currTok))
+            {
+                specQualifiers ~= parseTypeQualifier(loc);
+            }
+        }
+        while(matchSpecifierQualifier(currTok));
+
+        checkSpecifiers(nTypes, startLoc);
+        assert((isPrimitiveType && isUserType) == false);
+        return specQualifiers.data;
     }
 
     StructDeclarator parseStructDeclarator(ref ParserTokenLocation loc)
@@ -663,13 +948,20 @@ class Parser : IParser, IGo
         {
             auto startLoc = loc;
 
-            if(currTok.type == IDENTIFIER)
+            _lexer.disableLookup();
+
+            // Note: Enumerators are allowed here since the override of an
+            // enumerator will produce a clearer error later (symbol table)
+            if(currTok.type == IDENTIFIER || currTok.type == ENUM_VALUE)
             {
-                auto id = new Identifier(currTok.value.get!ParserIdentifierTokenValue.name, toAstLoc(startLoc, loc));
-                skip(loc);
+                auto id = parseIdentifier(loc);
+                _lexer.enableLookup();
                 return new DirectDeclaratorIdentifier(id, toAstLoc(startLoc, loc));
             }
-            else if(condSkip!LPAREN(loc))
+
+            _lexer.enableLookup();
+
+            if(condSkip!LPAREN(loc))
             {
                 auto decl = parseDeclarator(loc);
 
@@ -713,14 +1005,26 @@ class Parser : IParser, IGo
                         auto paramList = parseParameterList(loc);
                         declElems ~= new DirectDeclaratorTypedParams(paramList, toAstLoc(startLoc, loc));
                     }
-                    else if(currTok.type == IDENTIFIER)
+                    else if(currTok.type.among(IDENTIFIER, ENUM_VALUE))
                     {
                         auto args = appender!(Identifier[])();
 
-                        args ~= parseIdentifier(loc);
+                        pragma(msg, "[FIXME] check if parsing type here is allowed by the strict C89");
 
-                        while(condSkip!COMMA(loc))
-                            args ~= parseIdentifier(loc);
+                        do
+                        {
+                            if(currTok.type == ENUM_VALUE)
+                            {
+                                _lexer.disableLookup();
+                                args ~= parseIdentifier(loc);
+                                _lexer.enableLookup();
+                            }
+                            else
+                            {
+                                args ~= parseIdentifier(loc);
+                            }
+                        }
+                        while(condSkip!COMMA(loc));
 
                         declElems ~= new DirectDeclaratorUntypedParams(args.data, toAstLoc(startLoc, loc));
                     }
@@ -955,13 +1259,17 @@ class Parser : IParser, IGo
 
                     case OP_DOT:
                         skip(loc);
+                        _lexer.disableLookup();
                         auto id = parseIdentifier(loc);
+                        _lexer.enableLookup();
                         leftExpr = new FieldAccessExpression(leftExpr, id, toAstLoc(startLoc, loc));
                         break;
 
                     case OP_ARROW:
                         skip(loc);
+                        _lexer.disableLookup();
                         auto id = parseIdentifier(loc);
+                        _lexer.enableLookup();
                         leftExpr = new IndirectFieldAccessExpression(leftExpr, id, toAstLoc(startLoc, loc));
                         break;
 
@@ -1016,11 +1324,8 @@ class Parser : IParser, IGo
                     return new CharacterExpression(val.isWide, val.content, toAstLoc(startLoc, loc));
 
                 case ENUM_VALUE:
-                    pragma(msg, "[FIXME] to be continued");
-                    //auto val = token.value.get!ParserEnumTokenValue;
-                    //skip(loc);
-                    //return new EnumExpression(val.isDouble, val.content, toAstLoc(startLoc, loc));
-                    assert(false);
+                    auto enumValue = parseEnumValue(loc);
+                    return new EnumExpression(enumValue, toAstLoc(startLoc, loc));
 
                 case LPAREN:
                     skip(loc);
@@ -1110,17 +1415,14 @@ class Parser : IParser, IGo
         with(ParserTokenType)
         {
             auto startLoc = loc;
-            auto qualifiers = appender!(SpecifierQualifier[])();
-            AbstractDeclarator decl = null;
 
-            do
-                qualifiers ~= parseSpecifierQualifier(loc);
-            while(matchSpecifierQualifier(currTok));
+            auto typeParts = parseSpecifierQualifiers(loc);
+            AbstractDeclarator decl = null;
 
             if(matchAbstractDeclarator(currTok))
                 decl = parseAbstractDeclarator(loc);
 
-            return new Typename(qualifiers.data, decl, toAstLoc(startLoc, loc));
+            return new Typename(typeParts, decl, toAstLoc(startLoc, loc));
         }
     }
 
@@ -1131,6 +1433,9 @@ class Parser : IParser, IGo
             auto startLoc = loc;
             auto paramDecls = appender!(ParameterDeclaration[])();
             bool ellipsis = false;
+
+            // Temporary short-lived scope for function parameter
+            _lexer.beginScope();
 
             paramDecls ~= parseParameterDeclaration(loc);
 
@@ -1144,6 +1449,8 @@ class Parser : IParser, IGo
                     unexpected("parameter declaration or `...`", loc);
             }
 
+            _lexer.endScope();
+
             return new ParameterList(paramDecls.data, ellipsis, toAstLoc(startLoc, loc));
         }
     }
@@ -1151,21 +1458,21 @@ class Parser : IParser, IGo
     ParameterDeclaration parseParameterDeclaration(ref ParserTokenLocation loc)
     {
         auto startLoc = loc;
-        auto declSpecs = appender!(DeclarationSpecifier[])();
         GenericDeclarator decl;
 
-        do
-            declSpecs ~= parseDeclarationSpecifier(loc);
-        while(matchDeclarationSpecifier(currTok));
+        auto declSpecs = parseDeclarationSpecifiers(loc);
 
         if(matchGenericDeclarator(currTok))
             decl = parseGenericDeclarator(loc);
 
         if(!decl.hasValue)
-            return new AbstractParameterDeclaration(declSpecs.data, null, toAstLoc(startLoc, loc));
+            return new AbstractParameterDeclaration(declSpecs, null, toAstLoc(startLoc, loc));
         else if(decl.peek!AbstractDeclarator !is null)
-            return new AbstractParameterDeclaration(declSpecs.data, decl.get!AbstractDeclarator, toAstLoc(startLoc, loc));
-        return new ConcreteParameterDeclaration(declSpecs.data, decl.get!Declarator, toAstLoc(startLoc, loc));
+            return new AbstractParameterDeclaration(declSpecs, decl.get!AbstractDeclarator, toAstLoc(startLoc, loc));
+
+        auto concDecl = decl.get!Declarator;
+        registerDeclarator(concDecl, false);
+        return new ConcreteParameterDeclaration(declSpecs, concDecl, toAstLoc(startLoc, loc));
     }
 
     GenericDeclarator parseGenericDeclarator(ref ParserTokenLocation loc)
@@ -1203,15 +1510,17 @@ class Parser : IParser, IGo
     {
         with(ParserTokenType)
         {
+            _lexer.disableLookup();
             auto firstTokenType = currTok.type;
+            _lexer.enableLookup();
 
             // Simple cases where existing rules can be reused
-            if(firstTokenType == IDENTIFIER)
+            // Note: Enumerators are allowed here since the override of an
+            // enumerator will produce a clearer error later (symbol table)
+            if(firstTokenType.among(IDENTIFIER, ENUM_VALUE))
                 return GenericDirectDeclarator(parseDirectDeclarator(loc));
             else if(firstTokenType == LBRACK)
                 return GenericDirectDeclarator(parseDirectAbstractDeclarator(loc));
-            else if(firstTokenType != LPAREN)
-                unexpected("identifier or `[` or `(`", loc);
 
             // Abiguous case: it is not possible to know here if we 
             // have to deal with a declarator or an abstractDeclarator.
@@ -1224,6 +1533,9 @@ class Parser : IParser, IGo
 
             GenericDeclarator decl;
             ParameterList params;
+
+            if(!condSkip!LPAREN(loc))
+                unexpected("identifier or `[` or `(`", loc);
 
             if(matchGenericDeclarator(currTok))
                 decl = parseGenericDeclarator(loc);
@@ -1371,13 +1683,21 @@ class Parser : IParser, IGo
             if(!condSkip!ENUM(loc))
                 unexpected("enum", loc);
 
+            _lexer.disableLookup();
+
             if(currTok.type == IDENTIFIER)
                 id = parseIdentifier(loc);
+
+            _lexer.enableLookup();
 
             if(condSkip!LCURL(loc))
             {
                 do
-                    enums ~= parseEnumerator(loc);
+                {
+                    auto enumValue = parseEnumerator(loc);
+                    registerEnumerator(enumValue);
+                    enums ~= enumValue;
+                }
                 while(condSkip!COMMA(loc));
 
                 if(!condSkip!RCURL(loc))
@@ -1396,7 +1716,9 @@ class Parser : IParser, IGo
         auto startLoc = loc;
         Expression expr = null;
 
+        _lexer.disableLookup();
         auto id = parseIdentifier(loc);
+        _lexer.enableLookup();
 
         with(ParserTokenType)
             if(condSkip!ASSIGN(loc))
@@ -1410,25 +1732,26 @@ class Parser : IParser, IGo
         with(ParserTokenType)
         {
             auto startLoc = loc;
-            auto declSpecs = appender!(DeclarationSpecifier[])();
             auto initDecls = appender!(InitDeclarator[])();
 
-            do
-                declSpecs ~= parseDeclarationSpecifier(loc);
-            while(matchDeclarationSpecifier(currTok));
+            auto declSpecs = parseDeclarationSpecifiers(loc);
+            const bool isTypedefDecl = hasTypedef(declSpecs);
 
             if(matchInitDeclarator(currTok))
             {
-                initDecls ~= parseInitDeclarator(loc);
-
-                while(condSkip!COMMA(loc))
-                    initDecls ~= parseInitDeclarator(loc);
+                do
+                {
+                    auto decl = parseInitDeclarator(loc);
+                    registerDeclarator(decl.declarator, isTypedefDecl);
+                    initDecls ~= decl;
+                }
+                while(condSkip!COMMA(loc));
             }
 
             if(!condSkip!SEMICOLON(loc))
                 unexpected("`;`", loc);
 
-            return new Declaration(declSpecs.data, initDecls.data, toAstLoc(startLoc, loc));
+            return new Declaration(declSpecs, initDecls.data, toAstLoc(startLoc, loc));
         }
     }
 
@@ -1480,7 +1803,7 @@ class Parser : IParser, IGo
         }
     }
 
-    Statement parseCompoundStatement(ref ParserTokenLocation loc)
+    Statement parseCompoundStatement(ref ParserTokenLocation loc, bool withScope = true)
     {
         with(ParserTokenType)
         {
@@ -1491,14 +1814,25 @@ class Parser : IParser, IGo
             if(!condSkip!LCURL(loc))
                 unexpected("`{`", loc);
 
+            if(withScope)
+                _lexer.beginScope();
+
             while(matchDeclaration(currTok))
                 declarations ~= parseDeclaration(loc);
 
             while(matchStatement(currTok))
                 statements ~= parseStatement(loc);
 
+            if(withScope)
+                _lexer.endScope();
+
             if(!condSkip!RCURL(loc))
-                unexpected("`}`", loc);
+            {
+                if(matchDeclaration(currTok))
+                    fail("unexpected declaration after a statement", loc);
+                else
+                    unexpected("statement or `}`", loc);
+            }
 
             return new CompoundStatement(declarations.data, statements.data, toAstLoc(startLoc, loc));
         }
@@ -1508,13 +1842,17 @@ class Parser : IParser, IGo
     {
         with(ParserTokenType)
         {
+            _lexer.disableLookup();
+            auto firstTokenType = currTok.type;
+            _lexer.enableLookup();
+
             // Lookahead needed to solve the conflict between labeledStatement
             // and expressionStatement on the IDENTIFIER token.
-            if(currTok.type == IDENTIFIER && nextTok.type == COL)
+            if(firstTokenType == IDENTIFIER && nextTok.type == COL)
                 return parseLabeledStatement(loc);
             else if(matchExpressionStatement(currTok))
                 return parseExpressionStatement(loc);
-            else if(matchLabeledStatement(currTok))
+            else if(matchLabeledStatement(currTok) && firstTokenType != IDENTIFIER)
                 return parseLabeledStatement(loc);
             else if(matchCompoundStatement(currTok))
                 return parseCompoundStatement(loc);
@@ -1535,11 +1873,15 @@ class Parser : IParser, IGo
         with(ParserTokenType)
         {
             auto startLoc = loc;
+            _lexer.disableLookup();
             auto firstTokenType = currTok.type;
+            _lexer.enableLookup();
 
             if(firstTokenType == IDENTIFIER)
             {
+                _lexer.disableLookup();
                 auto id = parseIdentifier(loc);
+                _lexer.enableLookup();
 
                 if(!condSkip!COL(loc))
                     unexpected("`:`", loc);
@@ -1713,7 +2055,9 @@ class Parser : IParser, IGo
 
             if(condSkip!GOTO(loc))
             {
+                _lexer.disableLookup();
                 auto id = parseIdentifier(loc);
+                _lexer.enableLookup();
 
                 if(!condSkip!SEMICOLON(loc))
                     unexpected("`;`", loc);
@@ -1763,6 +2107,19 @@ class Parser : IParser, IGo
         auto name = currTok.value.get!ParserIdentifierTokenValue.name;
         skip(loc);
         return new Identifier(name, toAstLoc(startLoc, loc));
+    }
+
+    EnumValue parseEnumValue(ref ParserTokenLocation loc)
+    {
+        auto startLoc = loc;
+
+        with(ParserTokenType)
+            if(currTok.type != ENUM_VALUE)
+                unexpected("identifier", loc);
+
+        auto name = currTok.value.get!ParserIdentifierTokenValue.name;
+        skip(loc);
+        return new EnumValue(name, toAstLoc(startLoc, loc));
     }
 
     UserTypeSpecifier parseUserTypeSpecifier(ref ParserTokenLocation loc)

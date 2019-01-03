@@ -117,6 +117,10 @@ struct ParserToken
                 return value.get!ParserNumberTokenValue.content.to!string;
             else if(type == INTEGER)
                 return value.get!ParserIntegerTokenValue.content.to!string;
+            else if(type == TYPE_NAME)
+                return value.get!ParserIdentifierTokenValue.name;
+            else if(type == ENUM_VALUE)
+                return value.get!ParserIdentifierTokenValue.name;
             else if(type == STRING)
             {
                 auto actualValue = value.get!ParserStringTokenValue;

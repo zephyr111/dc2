@@ -445,6 +445,12 @@ final class IdentifierExpression : AstNode, PrimaryExpression
     mixin(genAstNodeContent!(typeof(this)));
 }
 
+final class EnumExpression : AstNode, PrimaryExpression
+{
+    EnumValue name;
+    mixin(genAstNodeContent!(typeof(this)));
+}
+
 final class IntegerExpression : AstNode, PrimaryExpression
 {
     bool isUnsigned;
@@ -477,6 +483,12 @@ final class StringExpression : AstNode, PrimaryExpression
     // Special
 
 final class Identifier : AstNode
+{
+    string name;
+    mixin(genAstNodeContent!(typeof(this)));
+}
+
+final class EnumValue : AstNode
 {
     string name;
     mixin(genAstNodeContent!(typeof(this)));
