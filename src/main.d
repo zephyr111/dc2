@@ -48,7 +48,7 @@ int main(string[] args)
     auto badInputFiles = inputFiles.filter!(a => !a.exists);
     auto existingInputFiles = inputFiles.filter!(a => a.exists);
 
-    foreach(arg ; badOptions)
+    foreach(const arg ; badOptions)
         stderr.writefln("error: unrecognized command line option `%s`", arg);
 
     if(!badOptions.empty)

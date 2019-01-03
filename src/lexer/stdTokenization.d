@@ -140,7 +140,13 @@ struct StdTokenization(Range)
 
         input = lookAhead;
 
-        auto value = acc.data.to!long(base);
+        long value;
+
+        if(id >= 0 && id < 6)
+            value = acc.data.to!ulong(base);
+        else
+            value = acc.data.to!long(base);
+
         return StdTokenValue(StdIntegerTokenValue(id >= 0 && id < 6, id >= 4, value)).nullable;
     }
 
@@ -174,15 +180,32 @@ struct StdTokenization(Range)
 
             case PpcTokenType.NUMBER:
                 auto oldValue = first.value.get!PpcNumberTokenValue;
-                _result = StdToken(StdTokenType.ERROR, first.location);
+                auto loc = first.location;
+                _result = StdToken(StdTokenType.ERROR, loc);
                 auto value = Nullable!StdTokenValue();
-                if(!(value = tryParseFloat(oldValue.content)).isNull)
-                    _result = StdToken(StdTokenType.FLOAT, first.location, value.get);
-                else if(!(value = tryParseInteger(oldValue.content)).isNull)
-                    _result = StdToken(StdTokenType.INTEGER, first.location, value.get);
-                else
-                    _errorHandler.error("unable to parse the number", first.location.filename,
-                                        first.location.line, first.location.col);
+
+                try
+                {
+                    if(!(value = tryParseFloat(oldValue.content)).isNull)
+                        _result = StdToken(StdTokenType.FLOAT, loc, value.get);
+                    else if(!(value = tryParseInteger(oldValue.content)).isNull)
+                        _result = StdToken(StdTokenType.INTEGER, loc, value.get);
+                    else
+                        _errorHandler.error("unable to parse the number", loc.filename, loc.line, loc.col);
+                    
+                    if(!oldValue.content.empty)
+                    {
+                        auto remainingValue = oldValue.content;
+                        auto fullValue = first.value.get!PpcNumberTokenValue.content;
+                        enum errMsgPattern = "ignored remaining suffix `%s` in `%s`";
+                        auto errMsg = format!errMsgPattern(remainingValue, fullValue);
+                        _errorHandler.warning(errMsg, loc.filename, loc.line, loc.col);
+                    }
+                }
+                catch(ConvOverflowException)
+                {
+                    _errorHandler.error("preprocessing number overflow", loc.filename, loc.line, loc.col);
+                }
                 break;
 
             case PpcTokenType.CHARACTER:
