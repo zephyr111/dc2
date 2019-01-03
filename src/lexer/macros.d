@@ -123,56 +123,72 @@ final class MacroDb
         return get(macroName, token.location);
     }
 
-    Nullable!Macro get(string macroName, TokenLocation loc)
+    private PpcToken makeNumberToken(string value, TokenLocation loc)
+    {
+        auto val = PpcTokenValue(PpcNumberTokenValue(value));
+        return PpcToken(PpcTokenType.NUMBER, loc, val);
+    }
+
+    private PpcToken makeStringToken(string value, bool isWide, TokenLocation loc)
+    {
+        auto val = PpcTokenValue(PpcStringTokenValue(isWide, value));
+        return PpcToken(PpcTokenType.STRING, loc, val);
+    }
+
+    private PpcToken lookupPredefinedMacro(string name, TokenLocation loc)
     {
         with(PpcTokenType)
         {
-            Macro* mPtr = macroName in _db;
-
-            if(mPtr !is null)
-                return (*mPtr).nullable;
-
-            if(!macroName.startsWith("__") || !macroName.endsWith("__"))
-                return Nullable!Macro();
-
-            PpcToken result;
-
-            switch(macroName[2..$-2])
+            switch(name)
             {
-                case "STDC":
-                    auto val = PpcTokenValue(PpcNumberTokenValue("1"));
-                    result = PpcToken(NUMBER, loc, val);
-                    break;
+                // Compiler
+                case "__DC2__": return makeNumberToken("1", loc);
 
-                case "LINE":
-                    auto val = PpcTokenValue(PpcNumberTokenValue(loc.line.to!string));
-                    result = PpcToken(NUMBER, loc, val);
-                    break;
+                // Standard C: C95
+                // It enable the compiler to tune the glibc (see features.h)
+                case "__STDC__": return makeNumberToken("1", loc);
+                case "__STDC_VERSION__": return makeNumberToken("199409L", loc);
+                case "__STRICT_ANSI__": return makeNumberToken("1", loc);
+                case "_ISOC95_SOURCE": return makeNumberToken("1", loc);
 
-                case "FILE":
-                    auto val = PpcTokenValue(PpcStringTokenValue(false, loc.filename));
-                    result = PpcToken(STRING, loc, val);
-                    break;
+                // Arch & OS: x86-64 linux only
+                case "__LP64__":
+                case "_LP64":
+                case "__x86_64__":
+                case "__x86_64":
+                case "__ELF__":
+                case "__gnu_linux__":
+                case "__linux":
+                case "__linux__":
+                case "linux":
+                case "__unix__":
+                case "__unix":
+                case "unix":
+                    return makeNumberToken("1", loc);
 
-                case "TIME":
-                    import std.datetime;
-                    auto currTime = _now.timeOfDay.toISOExtString;
-                    auto val = PpcTokenValue(PpcStringTokenValue(false, currTime));
-                    result = PpcToken(STRING, loc, val);
-                    break;
+                case "__LINE__": return makeNumberToken(loc.line.to!string, loc);
+                case "__FILE__": return makeStringToken(loc.filename, false, loc);
+                case "__TIME__": return makeStringToken(_now.timeOfDay.toISOExtString, false, loc);
+                case "__DATE__": return makeStringToken(_now.date.toISOExtString, false, loc);
 
-                case "DATE":
-                    auto currDate = _now.date.toISOExtString;
-                    auto val = PpcTokenValue(PpcStringTokenValue(false, currDate));
-                    result = PpcToken(STRING, loc, val);
-                    break;
-
-                default:
-                    return Nullable!Macro();
+                default: return PpcToken(EOF, loc, PpcTokenValue());
             }
-
-            return Macro(macroName, true, false, [], [result]).nullable;
         }
+    }
+
+    Nullable!Macro get(string macroName, TokenLocation loc)
+    {
+        Macro* mPtr = macroName in _db;
+
+        if(mPtr !is null)
+            return (*mPtr).nullable;
+
+        PpcToken result = lookupPredefinedMacro(macroName, loc);
+
+        if(result.type == PpcTokenType.EOF)
+            return Nullable!Macro();
+
+        return Macro(macroName, true, false, [], [result]).nullable;
     }
 
     void set(Macro m)

@@ -36,7 +36,17 @@ final class FileManager
         alias StdTokenizationRange = StdTokenization!(StringConcatenation!PreprocessingRange);
 
         enum maxNestingLevel = 200;
-        enum _defaultSystemPaths = ["/usr/include/x86_64-linux-musl/"];
+
+        // Current default header files are those of the glibc and gcc, 
+        // compatible with C89/C95 contrary to alternatives libc such as musl.
+        enum _defaultSystemPaths = [
+            "/usr/lib/gcc/x86_64-linux-gnu/8/include",
+            "/usr/lib/gcc/x86_64-linux-gnu/8/include-fixed",
+            "/usr/local/include",
+            "/usr/include/x86_64-linux-gnu",
+            "/usr/include",
+        ];
+
         enum _stdFiles = ["assert.h", "locale.h", "stddef.h", "ctype.h",
                                 "math.h", "stdio.h", "errno.h", "setjmp.h",
                                 "stdlib.h", "float.h", "signal.h", "string.h",
