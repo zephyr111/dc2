@@ -18,6 +18,7 @@ import std.variant;
 import interfaces;
 import parser.types;
 import parser.ast;
+import parser.astPrint;
 import utils;
 
 AstNodeLocation toAstLoc(ParserTokenLocation loc)
@@ -547,7 +548,8 @@ class Parser : IParser, IGo
     override void go()
     {
         auto loc = currTok.location;
-        parseTranslationUnit(loc);
+        auto ast = parseTranslationUnit(loc);
+        ast.printAsDot;
 
         pragma(msg, "[FIXME] to be continued");
     }

@@ -74,20 +74,29 @@ string genAstVisitorInterface()
         alias Alias(alias Symbol) = Symbol;
         alias sym = Alias!(__traits(getMember, parser.ast, item));
 
-        // If the member is a class
-        static if(is(sym == class))
-        {
-            bool found = false;
-
-            foreach(attr; __traits(getAttributes, sym))
-                found |= is(attr == visited);
-
-            // If the member old the attribute @visited
-            if(found)
-                acc.put(format!"    void visit(%s e);"(sym.stringof));
-        }
+        // If the member is a @visited class
+        if(is(sym == class) && hasUDA!(sym, visited))
+            acc.put(format!"    void visit(%s e);"(sym.stringof));
     }
 
     return acc.data.dup;
+}
+
+bool isVisitedAstNodeType(AstNodeType)()
+{
+    // If the member is a @visited class
+    static if(__traits(hasMember, parser.ast, AstNodeType.stringof))
+    {
+        // Find the class in the module
+        alias Alias(alias Symbol) = Symbol;
+        alias sym = Alias!(__traits(getMember, parser.ast, AstNodeType.stringof));
+
+        // If the member is a @visited class
+        return (is(sym == interface) || is(sym == class)) && hasUDA!(sym, visited);
+    }
+    else
+    {
+        return false;
+    }
 }
 
