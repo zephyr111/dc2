@@ -323,7 +323,7 @@ struct PpcTokenization(Range)
 
         auto readElem = (ElementType!Range a) => a.isAlphaNum && !a.among('e', 'E') || a.among('_', '.');
         while(_input.forwardWhile!readElem(acc) > 0
-                && _input.forwardIf!(a => a.among('e', 'E'))(acc))
+                && _input.forwardWhile!(a => a.among('e', 'E'))(acc) > 0)
             _input.forwardIf!(a => a.among('+', '-'))(acc);
 
         loc.length = _input.pos - loc.pos;

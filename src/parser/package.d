@@ -1251,7 +1251,10 @@ class Parser : IParser, IGo
                     case LPAREN:
                         skip(loc);
 
-                        auto params = parseCompositeExpression(loc);
+                        CompositeExpression params = null;
+
+                        if(matchCompositeExpression(currTok))
+                            params = parseCompositeExpression(loc);
 
                         if(!condSkip!RPAREN(loc))
                             unexpected("`)`", loc);

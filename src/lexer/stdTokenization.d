@@ -187,7 +187,7 @@ struct StdTokenization(Range)
                 try
                 {
                     if(!(value = tryParseFloat(oldValue.content)).isNull)
-                        _result = StdToken(StdTokenType.FLOAT, loc, value.get);
+                        _result = StdToken(StdTokenType.NUMBER, loc, value.get);
                     else if(!(value = tryParseInteger(oldValue.content)).isNull)
                         _result = StdToken(StdTokenType.INTEGER, loc, value.get);
                     else
