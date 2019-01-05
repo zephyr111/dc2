@@ -355,6 +355,19 @@ class Parser : IParser, IGo
         return true;
     }
 
+    void consume(ParserTokenType type)(ref ParserTokenLocation loc, string expected = "")
+    {
+        if(!condSkip!type(loc))
+        {
+            auto token = ParserToken(type, loc, ParserTokenValue());
+
+            if(expected == "")
+                unexpected(format!"`%s`"(token.toString), loc);
+            else
+                unexpected(expected, loc);
+        }
+    }
+
     void unexpected(string expectedStr, ref ParserTokenLocation loc)
     {
         if(currTok.type == ParserTokenType.EOF)
@@ -605,9 +618,7 @@ class Parser : IParser, IGo
                     initDecls ~= decl;
                 }
 
-                if(!condSkip!SEMICOLON(loc))
-                    unexpected("`;`", loc);
-
+                consume!SEMICOLON(loc);
                 return new Declaration(declSpecs, initDecls.data, toAstLoc(startLoc, loc));
             }
             else if(matchDeclaration(currTok) || matchCompoundStatement(currTok))
@@ -771,8 +782,8 @@ class Parser : IParser, IGo
 
             const bool isUnion = condSkip!UNION(loc);
 
-            if(!isUnion && !condSkip!STRUCT(loc))
-                unexpected("struct or union keywords", loc);
+            if(!isUnion)
+                consume!STRUCT(loc, "`struct` or `union`");
 
             _lexer.disableLookup();
 
@@ -794,8 +805,7 @@ class Parser : IParser, IGo
                         fail("the C standard forbid empty structures", loc);
                 }
 
-                if(!condSkip!RCURL(loc))
-                    unexpected("`}`", loc);
+                consume!RCURL(loc);
             }
 
             if(id is null && declarations.data.empty)
@@ -820,9 +830,7 @@ class Parser : IParser, IGo
                 declarators ~= parseStructDeclarator(loc);
             while(condSkip!COMMA(loc));
 
-            if(!condSkip!SEMICOLON(loc))
-                unexpected("`;`", loc);
-
+            consume!SEMICOLON(loc);
             return new StructDeclaration(typeParts, declarators.data, toAstLoc(startLoc, loc));
         }
     }
@@ -906,8 +914,7 @@ class Parser : IParser, IGo
         {
             Pointer result = null;
 
-            if(!condSkip!OP_MUL(loc))
-                unexpected("`*`", loc);
+            consume!OP_MUL(loc);
 
             do
             {
@@ -963,18 +970,10 @@ class Parser : IParser, IGo
 
             _lexer.enableLookup();
 
-            if(condSkip!LPAREN(loc))
-            {
-                auto decl = parseDeclarator(loc);
-
-                if(!condSkip!RPAREN(loc))
-                    unexpected("`)`", loc);
-
-                return decl;
-            }
-
-            unexpected("identifier or `(`", loc);
-            assert(false);
+            consume!LPAREN(loc, "identifier or `(`");
+            auto decl = parseDeclarator(loc);
+            consume!RPAREN(loc);
+            return decl;
         }
     }
 
@@ -995,9 +994,7 @@ class Parser : IParser, IGo
                     if(matchConstantExpression(currTok))
                         expr = parseConstantExpression(loc);
 
-                    if(!condSkip!RBRACK(loc))
-                        unexpected("`]`", loc);
-
+                    consume!RBRACK(loc);
                     declElems ~= new DirectDeclaratorArray(expr, toAstLoc(startLoc, loc));
                 }
                 else if(condSkip!LPAREN(loc))
@@ -1035,8 +1032,7 @@ class Parser : IParser, IGo
                         declElems ~= new DirectDeclaratorUntypedParams([], toAstLoc(startLoc, loc));
                     }
 
-                    if(!condSkip!RPAREN(loc))
-                        unexpected("`)`", loc);
+                    consume!RPAREN(loc);
                 }
             }
 
@@ -1061,10 +1057,7 @@ class Parser : IParser, IGo
                 return condExpr;
 
             Expression whenTrueExpr = parseCompositeExpression(loc);
-
-            if(!condSkip!COL(loc))
-                unexpected("`:`", loc);
-
+            consume!COL(loc);
             Expression whenFalseExpr = parseConditionalExpression(loc);
             return new ConditionalExpression(condExpr, whenTrueExpr, whenFalseExpr, toAstLoc(startLoc, loc));
         }
@@ -1160,12 +1153,8 @@ class Parser : IParser, IGo
             if(currTok.type == LPAREN && matchTypename(nextTok))
             {
                 skip(loc);
-
                 auto typename = parseTypename(loc);
-
-                if(!condSkip!RPAREN(loc))
-                    unexpected("`)`", loc);
-
+                consume!RPAREN(loc);
                 auto expr = parseCastExpression(loc);
                 return new CastExpression(typename, expr, toAstLoc(startLoc, loc));
             }
@@ -1203,12 +1192,8 @@ class Parser : IParser, IGo
                 if(currTok.type == LPAREN && matchTypename(nextTok))
                 {
                     skip(loc);
-
                     auto typename = parseTypename(loc);
-
-                    if(!condSkip!RPAREN(loc))
-                        unexpected("`)`", loc);
-
+                    consume!RPAREN(loc);
                     return new SimpleSizeofExpression(typename, toAstLoc(startLoc, loc));
                 }
 
@@ -1242,9 +1227,7 @@ class Parser : IParser, IGo
                         if(matchCompositeExpression(currTok))
                             indexExpr = parseCompositeExpression(loc);
 
-                        if(!condSkip!RBRACK(loc))
-                            unexpected("`]`", loc);
-
+                        consume!RBRACK(loc);
                         leftExpr = new ArrayAccessExpression(leftExpr, indexExpr, toAstLoc(startLoc, loc));
                         break;
 
@@ -1256,9 +1239,7 @@ class Parser : IParser, IGo
                         if(matchCompositeExpression(currTok))
                             params = parseCompositeExpression(loc);
 
-                        if(!condSkip!RPAREN(loc))
-                            unexpected("`)`", loc);
-
+                        consume!RPAREN(loc);
                         leftExpr = new FunctionCallExpression(leftExpr, params, toAstLoc(startLoc, loc));
                         break;
 
@@ -1335,8 +1316,7 @@ class Parser : IParser, IGo
                 case LPAREN:
                     skip(loc);
                     auto expr = parseCompositeExpression(loc);
-                    if(!condSkip!RPAREN(loc))
-                        unexpected("`)`", loc);
+                    consume!RPAREN(loc);
                     return expr;
 
                 default:
@@ -1446,12 +1426,14 @@ class Parser : IParser, IGo
 
             while(condSkip!COMMA(loc))
             {
-                if(matchParameterDeclaration(currTok))
-                    paramDecls ~= parseParameterDeclaration(loc);
-                else if(condSkip!ELLIPSIS(loc))
+                if(!matchParameterDeclaration(currTok))
+                {
+                    consume!ELLIPSIS(loc, "parameter declaration or `...`");
                     ellipsis = true;
-                else
-                    unexpected("parameter declaration or `...`", loc);
+                    break;
+                }
+
+                paramDecls ~= parseParameterDeclaration(loc);
             }
 
             _lexer.endScope();
@@ -1539,16 +1521,14 @@ class Parser : IParser, IGo
             GenericDeclarator decl;
             ParameterList params;
 
-            if(!condSkip!LPAREN(loc))
-                unexpected("identifier or `[` or `(`", loc);
+            consume!LPAREN(loc, "identifier or `[` or `(`");
 
             if(matchGenericDeclarator(currTok))
                 decl = parseGenericDeclarator(loc);
             else if(matchParameterList(currTok))
                 params = parseParameterList(loc);
 
-            if(!condSkip!RPAREN(loc))
-                unexpected("`)`", loc);
+            consume!RPAREN(loc);
 
             if(!decl.hasValue || decl.peek!AbstractDeclarator !is null)
             {
@@ -1613,8 +1593,7 @@ class Parser : IParser, IGo
                 else if(matchParameterList(currTok))
                     params = parseParameterList(loc);
 
-                if(!condSkip!RPAREN(loc))
-                    unexpected("`)`", loc);
+                consume!RPAREN(loc);
 
                 if(decl !is null)
                     return decl;
@@ -1624,10 +1603,7 @@ class Parser : IParser, IGo
             else if(condSkip!LBRACK(loc))
             {
                 Expression expr = parseConstantExpression(loc);
-
-                if(!condSkip!RBRACK(loc))
-                    unexpected("`]`", loc);
-
+                consume!RBRACK(loc);
                 return new DirectAbstractDeclaratorArray(expr, toAstLoc(startLoc, loc));
             }
 
@@ -1654,9 +1630,7 @@ class Parser : IParser, IGo
                     if(matchParameterList(currTok))
                         params = parseParameterList(loc);
 
-                    if(!condSkip!RPAREN(loc))
-                        unexpected("`)`", loc);
-
+                    consume!RPAREN(loc);
                     declElems ~= new DirectAbstractDeclaratorParams(params, toAstLoc(startSubLoc, loc));
                 }
                 else if(condSkip!LBRACK(loc))
@@ -1666,9 +1640,7 @@ class Parser : IParser, IGo
                     if(matchConstantExpression(currTok))
                         expr = parseConstantExpression(loc);
 
-                    if(!condSkip!RBRACK(loc))
-                        unexpected("`]`", loc);
-
+                    consume!RBRACK(loc);
                     declElems ~= new DirectAbstractDeclaratorArray(expr, toAstLoc(startSubLoc, loc));
                 }
             }
@@ -1685,8 +1657,7 @@ class Parser : IParser, IGo
             Identifier id = null;
             auto enums = appender!(Enumerator[])();
 
-            if(!condSkip!ENUM(loc))
-                unexpected("enum", loc);
+            consume!ENUM(loc);
 
             _lexer.disableLookup();
 
@@ -1705,8 +1676,7 @@ class Parser : IParser, IGo
                 }
                 while(condSkip!COMMA(loc));
 
-                if(!condSkip!RCURL(loc))
-                    unexpected("`}`", loc);
+                consume!RCURL(loc);
             }
 
             if(id is null && enums.data.empty)
@@ -1753,9 +1723,7 @@ class Parser : IParser, IGo
                 while(condSkip!COMMA(loc));
             }
 
-            if(!condSkip!SEMICOLON(loc))
-                unexpected("`;`", loc);
-
+            consume!SEMICOLON(loc);
             return new Declaration(declSpecs, initDecls.data, toAstLoc(startLoc, loc));
         }
     }
@@ -1794,16 +1762,13 @@ class Parser : IParser, IGo
             auto startLoc = loc;
             auto initializers = appender!(Initializer[])();
 
-            if(!condSkip!LCURL(loc))
-                unexpected("`{`", loc);
+            consume!LCURL(loc);
 
             do
                 initializers ~= parseInitializer(loc);
             while(condSkip!COMMA(loc) && matchInitializer(currTok));
 
-            if(!condSkip!RCURL(loc))
-                unexpected("`}`", loc);
-
+            consume!RCURL(loc);
             return new InitializerList(initializers.data, toAstLoc(startLoc, loc));
         }
     }
@@ -1816,8 +1781,7 @@ class Parser : IParser, IGo
             auto declarations = appender!(Declaration[])();
             auto statements = appender!(Statement[])();
 
-            if(!condSkip!LCURL(loc))
-                unexpected("`{`", loc);
+            consume!LCURL(loc);
 
             if(withScope)
                 _lexer.beginScope();
@@ -1828,17 +1792,13 @@ class Parser : IParser, IGo
             while(matchStatement(currTok))
                 statements ~= parseStatement(loc);
 
+            if(matchDeclaration(currTok))
+                fail("unexpected declaration after a statement", loc);
+
             if(withScope)
                 _lexer.endScope();
 
-            if(!condSkip!RCURL(loc))
-            {
-                if(matchDeclaration(currTok))
-                    fail("unexpected declaration after a statement", loc);
-                else
-                    unexpected("statement or `}`", loc);
-            }
-
+            consume!RCURL(loc, "statement or `}`");
             return new CompoundStatement(declarations.data, statements.data, toAstLoc(startLoc, loc));
         }
     }
@@ -1888,27 +1848,20 @@ class Parser : IParser, IGo
                 auto id = parseIdentifier(loc);
                 _lexer.enableLookup();
 
-                if(!condSkip!COL(loc))
-                    unexpected("`:`", loc);
-
+                consume!COL(loc);
                 auto statement = parseStatement(loc);
                 return new LabelStatement(id, statement, toAstLoc(startLoc, loc));
             }
             else if(condSkip!CASE(loc))
             {
                 auto expr = parseConstantExpression(loc);
-
-                if(!condSkip!COL(loc))
-                    unexpected("`:`", loc);
-
+                consume!COL(loc);
                 auto statement = parseStatement(loc);
                 return new CaseStatement(expr, statement, toAstLoc(startLoc, loc));
             }
             else if(condSkip!DEFAULT(loc))
             {
-                if(!condSkip!COL(loc))
-                    unexpected("`:`", loc);
-
+                consume!COL(loc);
                 auto statement = parseStatement(loc);
                 return new DefaultStatement(statement, toAstLoc(startLoc, loc));
             }
@@ -1927,8 +1880,7 @@ class Parser : IParser, IGo
             expr = parseCompositeExpression(loc);
 
         with(ParserTokenType)
-            if(!condSkip!SEMICOLON(loc))
-                unexpected("`;`", loc);
+            consume!SEMICOLON(loc);
 
         return new ExpressionStatement(expr, toAstLoc(startLoc, loc));
     }
@@ -1943,14 +1895,9 @@ class Parser : IParser, IGo
             {
                 Statement elseStatement = null;
 
-                if(!condSkip!LPAREN(loc))
-                    unexpected("`(`", loc);
-
+                consume!LPAREN(loc);
                 auto expr = parseCompositeExpression(loc);
-
-                if(!condSkip!RPAREN(loc))
-                    unexpected("`)`", loc);
-
+                consume!RPAREN(loc);
                 auto ifStatement = parseStatement(loc);
 
                 if(condSkip!ELSE(loc))
@@ -1960,14 +1907,9 @@ class Parser : IParser, IGo
             }
             else if(condSkip!SWITCH(loc))
             {
-                if(!condSkip!LPAREN(loc))
-                    unexpected("`(`", loc);
-
+                consume!LPAREN(loc);
                 auto expr = parseCompositeExpression(loc);
-
-                if(!condSkip!RPAREN(loc))
-                    unexpected("`)`", loc);
-
+                consume!RPAREN(loc);
                 auto statement = parseStatement(loc);
                 return new SwitchStatement(expr, statement, toAstLoc(startLoc, loc));
             }
@@ -1985,64 +1927,44 @@ class Parser : IParser, IGo
 
             if(condSkip!WHILE(loc))
             {
-                if(!condSkip!LPAREN(loc))
-                    unexpected("`(`", loc);
-
+                consume!LPAREN(loc);
                 auto expr = parseCompositeExpression(loc);
-
-                if(!condSkip!RPAREN(loc))
-                    unexpected("`)`", loc);
-
+                consume!RPAREN(loc);
                 auto statement = parseStatement(loc);
                 return new WhileStatement(expr, statement, toAstLoc(startLoc, loc));
             }
             else if(condSkip!DO(loc))
             {
                 auto statement = parseStatement(loc);
-
-                if(!condSkip!WHILE(loc))
-                    unexpected("`while`", loc);
-
-                if(!condSkip!LPAREN(loc))
-                    unexpected("`(`", loc);
-
+                consume!WHILE(loc);
+                consume!LPAREN(loc);
                 auto expr = parseCompositeExpression(loc);
-
-                if(!condSkip!RPAREN(loc))
-                    unexpected("`)`", loc);
-
-                if(!condSkip!SEMICOLON(loc))
-                    unexpected("`;`", loc);
-
+                consume!RPAREN(loc);
+                consume!SEMICOLON(loc);
                 return new DoStatement(expr, statement, toAstLoc(startLoc, loc));
             }
             else if(condSkip!FOR(loc))
             {
-                if(!condSkip!LPAREN(loc))
-                    unexpected("`(`", loc);
-
                 Expression initExpr = null;
                 Expression condExpr = null;
                 Expression iterExpr = null;
 
+                consume!LPAREN(loc);
+
                 if(matchCompositeExpression(currTok))
                     initExpr = parseCompositeExpression(loc);
 
-                if(!condSkip!SEMICOLON(loc))
-                    unexpected("`;`", loc);
+                consume!SEMICOLON(loc);
 
                 if(matchCompositeExpression(currTok))
                     condExpr = parseCompositeExpression(loc);
 
-                if(!condSkip!SEMICOLON(loc))
-                    unexpected("`;`", loc);
+                consume!SEMICOLON(loc);
 
                 if(matchCompositeExpression(currTok))
                     iterExpr = parseCompositeExpression(loc);
 
-                if(!condSkip!RPAREN(loc))
-                    unexpected("`)`", loc);
-
+                consume!RPAREN(loc);
                 auto statement = parseStatement(loc);
                 return new ForStatement(initExpr, condExpr, iterExpr, statement, toAstLoc(startLoc, loc));
             }
@@ -2064,23 +1986,17 @@ class Parser : IParser, IGo
                 auto id = parseIdentifier(loc);
                 _lexer.enableLookup();
 
-                if(!condSkip!SEMICOLON(loc))
-                    unexpected("`;`", loc);
-
+                consume!SEMICOLON(loc);
                 return new GotoStatement(id, toAstLoc(startLoc, loc));
             }
             else if(condSkip!CONTINUE(loc))
             {
-                if(!condSkip!SEMICOLON(loc))
-                    unexpected("`;`", loc);
-
+                consume!SEMICOLON(loc);
                 return new ContinueStatement(toAstLoc(startLoc, loc));
             }
             else if(condSkip!BREAK(loc))
             {
-                if(!condSkip!SEMICOLON(loc))
-                    unexpected("`;`", loc);
-
+                consume!SEMICOLON(loc);
                 return new BreakStatement(toAstLoc(startLoc, loc));
             }
             else if(condSkip!RETURN(loc))
@@ -2090,9 +2006,7 @@ class Parser : IParser, IGo
                 if(matchCompositeExpression(currTok))
                     expr = parseCompositeExpression(loc);
 
-                if(!condSkip!SEMICOLON(loc))
-                    unexpected("`;`", loc);
-
+                consume!SEMICOLON(loc);
                 return new ReturnStatement(expr, toAstLoc(startLoc, loc));
             }
 
