@@ -285,12 +285,10 @@ private struct TypedLexerRange(Range)
 //   The parser stop on the first error encountered and try to report a proper error.
 //   In order to report quite readable errors, only the most probable tokens and/or 
 //   the one that end the rule are expected (eg. ';' for statements).
-pragma(msg, "[FIXME] Check conflicts (LR vs RL)");
 pragma(msg, "[FIXME] Check associativity: left to right vs right to left eval (use reverse ?)");
 pragma(msg, "[FIXME] Check that the identifier lookup enabling/disabling are put on the good position");
 pragma(msg, "[FIXME] Bad error location at the end of the file due to a missing EOF token");
 pragma(msg, "[FIXME] Errors should expect rules rather than token subsets (add checks before parsing subrules)");
-pragma(msg, "[FIXME] Update the parser range when a declaration is found (typedef, shadow var def, etc.)");
 pragma(msg, "[OPTIM] Use a LALR(1) sub-parser for expressions (faster)");
 class Parser : IParser, IGo
 {
