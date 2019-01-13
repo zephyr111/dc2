@@ -9,6 +9,8 @@ import std.array;
 import std.traits;
 import std.format;
 
+import parser.ast;
+
 
 // UDA used to register class in the AstVisitor interface
 enum visited;
