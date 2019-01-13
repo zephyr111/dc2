@@ -10,27 +10,27 @@ import std.conv;
 import std.traits;
 import std.algorithm.comparison;
 import core.exception;
-import interfaces.lexer;
+import stdTypes = interfaces.types.tokens;
 import utils;
 
 
-alias LexerTokenType = ILexer.TokenType;
-alias LexerTokenLocation = ILexer.TokenLocation;
-alias LexerIdentifierTokenValue = ILexer.IdentifierTokenValue;
-alias LexerIntegerTokenValue = ILexer.IntegerTokenValue;
-alias LexerNumberTokenValue = ILexer.NumberTokenValue;
-alias LexerCharTokenValue = ILexer.CharTokenValue;
-alias LexerStringTokenValue = ILexer.StringTokenValue;
-alias LexerTokenValue = ILexer.TokenValue;
-alias LexerToken = ILexer.Token;
+alias LexerTokenType = stdTypes.TokenType;
+alias LexerTokenLocation = stdTypes.TokenLocation;
+alias LexerIdentifierTokenValue = stdTypes.IdentifierTokenValue;
+alias LexerIntegerTokenValue = stdTypes.IntegerTokenValue;
+alias LexerNumberTokenValue = stdTypes.NumberTokenValue;
+alias LexerCharTokenValue = stdTypes.CharTokenValue;
+alias LexerStringTokenValue = stdTypes.StringTokenValue;
+alias LexerTokenValue = stdTypes.TokenValue;
+alias LexerToken = stdTypes.Token;
 
-alias ParserTokenLocation = ILexer.TokenLocation;
-alias ParserIdentifierTokenValue = ILexer.IdentifierTokenValue;
-alias ParserIntegerTokenValue = ILexer.IntegerTokenValue;
-alias ParserNumberTokenValue = ILexer.NumberTokenValue;
-alias ParserCharTokenValue = ILexer.CharTokenValue;
-alias ParserStringTokenValue = ILexer.StringTokenValue;
-alias ParserTokenValue = ILexer.TokenValue;
+alias ParserTokenLocation = stdTypes.TokenLocation;
+alias ParserIdentifierTokenValue = stdTypes.IdentifierTokenValue;
+alias ParserIntegerTokenValue = stdTypes.IntegerTokenValue;
+alias ParserNumberTokenValue = stdTypes.NumberTokenValue;
+alias ParserCharTokenValue = stdTypes.CharTokenValue;
+alias ParserStringTokenValue = stdTypes.StringTokenValue;
+alias ParserTokenValue = stdTypes.TokenValue;
 
 enum ParserTokenType
 {

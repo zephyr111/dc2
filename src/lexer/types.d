@@ -11,19 +11,19 @@ import std.traits;
 import std.algorithm.comparison;
 import std.format;
 import core.exception;
-import interfaces.lexer;
+import stdTypes = interfaces.types.tokens;
 import utils;
 
 
-alias TokenLocation = ILexer.TokenLocation;
-alias StdIdentifierTokenValue = ILexer.IdentifierTokenValue;
-alias StdIntegerTokenValue = ILexer.IntegerTokenValue;
-alias StdNumberTokenValue = ILexer.NumberTokenValue;
-alias StdCharTokenValue = ILexer.CharTokenValue;
-alias StdStringTokenValue = ILexer.StringTokenValue;
-alias StdTokenType = ILexer.TokenType;
-alias StdTokenValue = ILexer.TokenValue;
-alias StdToken = ILexer.Token;
+alias TokenLocation = stdTypes.TokenLocation;
+alias StdIdentifierTokenValue = stdTypes.IdentifierTokenValue;
+alias StdIntegerTokenValue = stdTypes.IntegerTokenValue;
+alias StdNumberTokenValue = stdTypes.NumberTokenValue;
+alias StdCharTokenValue = stdTypes.CharTokenValue;
+alias StdStringTokenValue = stdTypes.StringTokenValue;
+alias StdTokenType = stdTypes.TokenType;
+alias StdTokenValue = stdTypes.TokenValue;
+alias StdToken = stdTypes.Token;
 
 alias PpcMacroState = immutable(string)[];
 

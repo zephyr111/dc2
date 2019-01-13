@@ -10,6 +10,6 @@ public import interfaces.types.ast;
 
 interface IParser
 {
-    
+    public TranslationUnit parse();
 }
 

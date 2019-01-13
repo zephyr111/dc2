@@ -13,7 +13,6 @@ import std.algorithm.iteration;
 import std.array;
 import std.typecons;
 import std.format;
-import std.traits;
 import std.variant;
 import interfaces.parser;
 import interfaces.lexer;
@@ -563,8 +562,12 @@ class Parser : IParser, IGo
         auto loc = currTok.location;
         auto ast = parseTranslationUnit(loc);
         ast.printAsDot;
+    }
 
-        pragma(msg, "[FIXME] to be continued");
+    override TranslationUnit parse()
+    {
+        auto loc = currTok.location;
+        return parseTranslationUnit(loc);
     }
 
     TranslationUnit parseTranslationUnit(ref ParserTokenLocation loc)
