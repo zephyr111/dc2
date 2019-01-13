@@ -3,13 +3,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-module parser.astBase;
+module interfaces.types.astBase;
 
 import std.array;
 import std.traits;
 import std.format;
 
-import parser.ast;
+import interfaces.types.ast;
 
 
 // UDA used to register class in the AstVisitor interface
@@ -70,11 +70,11 @@ string genAstVisitorInterface()
 {
     auto acc = appender!string;
 
-    // Foreach member of the parser.ast module
-    foreach(item; __traits(allMembers, parser.ast))
+    // Foreach member of the interfaces.types.ast module
+    foreach(item; __traits(allMembers, interfaces.types.ast))
     {
         alias Alias(alias Symbol) = Symbol;
-        alias sym = Alias!(__traits(getMember, parser.ast, item));
+        alias sym = Alias!(__traits(getMember, interfaces.types.ast, item));
 
         // If the member is a @visited class
         if(is(sym == class) && hasUDA!(sym, visited))
@@ -87,11 +87,11 @@ string genAstVisitorInterface()
 bool isVisitedAstNodeType(AstNodeType)()
 {
     // If the member is a @visited class
-    static if(__traits(hasMember, parser.ast, AstNodeType.stringof))
+    static if(__traits(hasMember, interfaces.types.ast, AstNodeType.stringof))
     {
         // Find the class in the module
         alias Alias(alias Symbol) = Symbol;
-        alias sym = Alias!(__traits(getMember, parser.ast, AstNodeType.stringof));
+        alias sym = Alias!(__traits(getMember, interfaces.types.ast, AstNodeType.stringof));
 
         // If the member is a @visited class
         return (is(sym == interface) || is(sym == class)) && hasUDA!(sym, visited);

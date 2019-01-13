@@ -16,7 +16,7 @@ import std.file;
 import std.traits;
 import std.exception;
 import std.conv;
-import interfaces : IErrorHandler;
+import interfaces.errors;
 import lexer.locationTracking;
 import lexer.trigraphSubstitution;
 import lexer.lineSplicing;

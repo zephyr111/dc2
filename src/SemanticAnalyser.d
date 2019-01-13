@@ -6,7 +6,10 @@
 module SemanticAnalyser;
 
 import std.stdio;
-import interfaces;
+import interfaces.parser;
+import interfaces.semantics;
+import interfaces.go;
+import interfaces.errors;
 
 
 class SemanticAnalyser : ISemanticAnalyser

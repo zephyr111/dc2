@@ -7,7 +7,7 @@ module ErrorHandler;
 
 import std.stdio;
 import std.format;
-import interfaces;
+import interfaces.errors;
 
 
 class ErrorHandler : IErrorHandler

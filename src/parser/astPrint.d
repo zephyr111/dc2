@@ -10,9 +10,8 @@ import std.traits;
 import std.array;
 import std.algorithm.iteration;
 import std.format;
-import interfaces;
-import parser.ast;
-import parser.astBase;
+import interfaces.types.ast;
+import interfaces.types.astBase;
 import utils;
 
 

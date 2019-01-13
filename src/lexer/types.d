@@ -11,7 +11,7 @@ import std.traits;
 import std.algorithm.comparison;
 import std.format;
 import core.exception;
-import interfaces;
+import interfaces.lexer;
 import utils;
 
 

@@ -3,9 +3,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-module interfaces;
+module interfaces.lexer;
 
-import std.exception;
 import std.variant;
 import std.typecons;
 
@@ -118,38 +117,5 @@ interface ILexer
     public void addIncludePath(string includePath);
     public const(string)[] includePaths() const;
     public Nullable!Token next();
-}
-
-interface IParser
-{
-    
-}
-
-interface ISemanticAnalyser
-{
-    
-}
-
-class HaltException : Exception
-{
-    mixin basicExceptionCtors;
-}
-
-interface IErrorHandler
-{
-    // Note: error and missingFile functions can throw a class
-    // derived from IHaltException to stop the program
-    void warning(string message, string filename, ulong line, ulong col, ulong sliceLength = 0);
-    void error(string message, string filename, ulong line, ulong col, ulong sliceLength = 0);
-    void criticalError(string message, string filename, ulong line, ulong col, ulong sliceLength = 0);
-    void missingFile(string filename);
-    void handleHalt(HaltException err);
-    void printReport();
-    int countErrors();
-}
-
-interface IGo
-{
-    void go();
 }
 

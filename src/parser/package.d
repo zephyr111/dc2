@@ -15,9 +15,11 @@ import std.typecons;
 import std.format;
 import std.traits;
 import std.variant;
-import interfaces;
+import interfaces.parser;
+import interfaces.lexer;
+import interfaces.go;
+import interfaces.errors;
 import parser.types;
-import parser.ast;
 import parser.astPrint;
 import utils;
 

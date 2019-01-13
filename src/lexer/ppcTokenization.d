@@ -14,7 +14,7 @@ import std.algorithm.iteration;
 import std.algorithm.searching;
 import std.ascii : isAlpha, isAlphaNum, isDigit, isOctalDigit, isPunctuation;
 import std.typecons;
-import interfaces : IErrorHandler;
+import interfaces.errors;
 import lexer.types;
 import utils;
 

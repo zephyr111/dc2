@@ -14,7 +14,7 @@ import std.algorithm.iteration;
 import std.typecons;
 import std.conv;
 import std.datetime;
-import interfaces : IErrorHandler;
+import interfaces.errors;
 import lexer.types;
 import utils;
 

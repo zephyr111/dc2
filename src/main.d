@@ -8,14 +8,17 @@ module main;
 import std.stdio;
 import std.range;
 import std.algorithm.searching;
-import std.algorithm.comparison;
-import std.algorithm.mutation;
 import std.algorithm.iteration;
 import std.getopt;
-import std.exception;
 import std.process;
 import std.file;
-import interfaces;
+
+import interfaces.go;
+import interfaces.lexer;
+import interfaces.parser;
+import interfaces.semantics;
+import interfaces.errors;
+
 import ErrorHandler;
 import lexer;
 import parser;

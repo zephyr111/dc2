@@ -10,7 +10,7 @@ import std.conv;
 import std.traits;
 import std.algorithm.comparison;
 import core.exception;
-import interfaces;
+import interfaces.lexer;
 import utils;
 
 

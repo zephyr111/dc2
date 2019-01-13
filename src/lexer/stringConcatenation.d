@@ -8,9 +8,7 @@ module lexer.stringConcatenation;
 import std.stdio;
 import std.range;
 import std.range.primitives;
-import std.traits;
-import std.typecons;
-import interfaces : IErrorHandler;
+import interfaces.errors;
 import lexer.types;
 import utils;
 

@@ -17,7 +17,7 @@ import std.ascii;
 import std.conv;
 import std.meta;
 import std.functional;
-import interfaces : IErrorHandler;
+import interfaces.errors;
 import lexer.types;
 import lexer.macros;
 import utils;

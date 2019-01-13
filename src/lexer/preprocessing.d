@@ -20,7 +20,7 @@ import std.string;
 import std.conv;
 import std.file;
 import std.container;
-import interfaces : IErrorHandler;
+import interfaces.errors;
 import lexer.types;
 import lexer.fileLoading;
 import lexer.parsing;

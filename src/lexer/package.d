@@ -13,7 +13,9 @@ import std.traits;
 import std.typecons;
 import std.path;
 import core.time;
-import interfaces;
+import interfaces.lexer;
+import interfaces.go;
+import interfaces.errors;
 import lexer.fileLoading;
 import lexer.types;
 
