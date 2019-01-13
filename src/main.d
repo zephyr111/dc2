@@ -27,8 +27,10 @@ import semantics;
 
 int main(string[] args)
 {
-    bool preprocessorOnly;
+    bool preprocessorOnly = false;
+    bool parserOnly = false;
     string[] includePaths;
+
     auto helpInformation = getopt(args, config.passThrough, 
         config.caseSensitive, "E", "Only run the preprocessor", &preprocessorOnly,
         config.caseSensitive, "I", "Add the directory to the include search path", &includePaths
@@ -46,21 +48,34 @@ int main(string[] args)
         return 1;
     }
 
-    auto badOptions = args[1..$].filter!(a => a.startsWith('-'));
+    auto unrecognizedOptions = args[1..$].filter!(a => a.startsWith('-'));
     auto inputFiles = args[1..$].filter!(a => !a.startsWith('-'));
     auto badInputFiles = inputFiles.filter!(a => !a.exists);
     auto existingInputFiles = inputFiles.filter!(a => a.exists);
 
-    foreach(const arg ; badOptions)
-        stderr.writefln("error: unrecognized command line option `%s`", arg);
+    bool badOption = false;
 
-    if(!badOptions.empty)
-        return 1;
+    // Special options such as -fxxx and -Wxxx
+    foreach(const option ; unrecognizedOptions)
+    {
+        switch(option)
+        {
+            // Only run the parser and dump the AST
+            case "-fdump-ast":
+                parserOnly = true;
+                break;
+
+            default:
+                stderr.writefln("error: unrecognized command line option `%s`", option);
+                badOption = true;
+                break;
+        }
+    }
 
     foreach(filename ; badInputFiles)
         stderr.writefln("error: unable to find the file `%s`", filename);
 
-    if(!badInputFiles.empty)
+    if(badOption || !badInputFiles.empty)
         return 1;
 
     foreach(filename ; existingInputFiles)
@@ -80,14 +95,13 @@ int main(string[] args)
                 lexer.addIncludePath(path);
 
             if(preprocessorOnly)
-            {
                 lexer.go();
-            }
-            else
-            {
-                // To be continued...
+            else if(parserOnly)
                 parser.go();
-            }
+            else
+                semAnalyser.go();
+
+            // To be continued...
         }
         catch(HaltException err)
         {

@@ -12,7 +12,7 @@ import interfaces.go;
 import interfaces.errors;
 
 
-class SemanticAnalyser : ISemanticAnalyser
+class SemanticAnalyser : ISemanticAnalyser, IGo
 {
     private
     {
@@ -24,6 +24,11 @@ class SemanticAnalyser : ISemanticAnalyser
     {
         _parser = parser;
         _errorHandler = errorHandler;
+    }
+
+    void go()
+    {
+        _parser.parse();
     }
 }
 
