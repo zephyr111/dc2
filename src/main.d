@@ -19,10 +19,10 @@ import interfaces.parser;
 import interfaces.semantics;
 import interfaces.errors;
 
-import ErrorHandler;
+import errorHandling;
 import lexer;
 import parser;
-import SemanticAnalyser;
+import semantics;
 
 
 int main(string[] args)
