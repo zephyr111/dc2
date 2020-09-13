@@ -278,7 +278,7 @@ struct Preprocessing(InputRange)
 
             if(!mOld.isNull && mOld.get != m)
                 error(format!"macro `%s` redefined differently"(m.name), loc);
-            else if(!mOld.isNull && mOld.predefined)
+            else if(!mOld.isNull && mOld.get.predefined)
                 error(format!"redefining the built-in macro `%s`"(m.name), loc);
 
             _macros.set(m);
@@ -304,9 +304,9 @@ struct Preprocessing(InputRange)
             if(!m.isNull)
             {
                 if(m.get.predefined)
-                    error(format!"undefining the built-in macro `%s`"(m.name), loc);
+                    error(format!"undefining the built-in macro `%s`"(m.get.name), loc);
 
-                _macros.remove(m);
+                _macros.remove(m.get);
             }
 
             noSpaceInput.popFront();

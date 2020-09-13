@@ -406,14 +406,14 @@ struct PpcTokenization(Range)
             return;
         }
 
-        if(_result.type == PpcTokenType.NEWLINE)
+        if(_result.get.type == PpcTokenType.NEWLINE)
             _lexingState = LexingState.NEWLINE_FOUND;
-        else if(_result.type == PpcTokenType.SHARP && _lexingState == LexingState.NEWLINE_FOUND)
+        else if(_result.get.type == PpcTokenType.SHARP && _lexingState == LexingState.NEWLINE_FOUND)
             _lexingState = LexingState.SHARP_FOUND;
-        else if(_result.type == PpcTokenType.IDENTIFIER && _lexingState == LexingState.SHARP_FOUND
-                && _result.value.get!PpcIdentifierTokenValue.name == "include")
+        else if(_result.get.type == PpcTokenType.IDENTIFIER && _lexingState == LexingState.SHARP_FOUND
+                && _result.get.value.get!PpcIdentifierTokenValue.name == "include")
             _lexingState = LexingState.INCLUDE_FOUND;
-        else if(_result.type != PpcTokenType.SPACING)
+        else if(_result.get.type != PpcTokenType.SPACING)
             _lexingState = LexingState.NOTHING_FOUND;
     }
 
