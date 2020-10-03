@@ -28,7 +28,8 @@ import semantics;
 int main(string[] args)
 {
     bool preprocessorOnly = false;
-    bool parserOnly = false;
+    bool astDump = false;
+    bool irDump = false;
     string[] includePaths;
 
     auto helpInformation = getopt(args, config.passThrough, 
@@ -62,7 +63,13 @@ int main(string[] args)
         {
             // Only run the parser and dump the AST
             case "-fdump-ast":
-                parserOnly = true;
+                astDump = true;
+                break;
+
+            // Only run the parser and dump the intermediate representation code
+            // serialized as LLVM-IR code
+            case "-femit-llvm":
+                irDump = true;
                 break;
 
             default:
@@ -70,6 +77,12 @@ int main(string[] args)
                 badOption = true;
                 break;
         }
+    }
+
+    if(preprocessorOnly + astDump + irDump >= 2)
+    {
+        stderr.writefln("error: dumping simultaneously results from different compiling phases is not yet supported", option);
+        badOption = true;
     }
 
     foreach(filename ; badInputFiles)
@@ -96,9 +109,9 @@ int main(string[] args)
 
             if(preprocessorOnly)
                 lexer.go();
-            else if(parserOnly)
+            else if(astDump)
                 parser.go();
-            else
+            else if(irDump)
                 semAnalyser.go();
 
             // To be continued...
